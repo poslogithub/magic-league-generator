@@ -1,5 +1,5 @@
 import calendar
-import datetime
+from datetime import datetime, timedelta
 from dateutil.tz import gettz
 from hashlib import sha512
 import random
@@ -13,32 +13,62 @@ class Rarity():
     UNCOMMON = "Uncommon"
     RARE = "Rare"
     MYTHIC_RARE = "Mythic Rare"
-    
+
+class N_IN_PACK():
+    BASIC = 1
+    COMMON = 10
+    UNCOMMON = 3
+    RARE = 1
+
+class Mode():
+    MONTHLY = "monthly"
+    WEEKLY = "weekly"
+    DAILY = "daily"
+    RANDOM = "random"
+
 
 class Generator():
 
     TZ_UTC = gettz("UTC")
     MONTHLY_RESET_HOUR = 20
+    WEEKLY_RESET_HOUR = 8
+    DAILY_RESET_HOUR = 8
+
     MYTHIC_RARE_RATE = 1 / 7.4
+    BASIC_LANDS = ["平地", "島", "沼", "山", "森"]
 
     def __init__(self, pool):
         self.cards = pool.cards
+        self.sets = self.get_sets()
+        self.set_info = {}
+        for set in self.sets:
+            self.set_info[set] = {}
+            cards = self.get_cards(set=set, rarity=Rarity.MYTHIC_RARE)
+            self.set_info[set][Rarity.MYTHIC_RARE] = len(cards)
+            cards = self.get_cards(set=set, rarity=Rarity.RARE)
+            self.set_info[set][Rarity.RARE] = len(cards)
+            cards = self.get_cards(set=set, rarity=Rarity.UNCOMMON)
+            self.set_info[set][Rarity.UNCOMMON] = len(cards)
+            cards = self.get_cards(set=set, rarity=Rarity.COMMON)
+            self.set_info[set][Rarity.COMMON] = len(cards)
+            cards = self.get_cards(set=set, rarity=Rarity.BASIC)
+            self.set_info[set][Rarity.BASIC] = len(cards)
     
     def add_card(self, set, rarity, picked_cards):
         cards = self.get_cards(set=set, rarity=rarity)
-        n = len(cards)
         while True:
-            card = cards[random.randrange(0, n)]
+            card = cards[random.randrange(0, len(cards))]
             if card not in picked_cards:
                 picked_cards.append(card)
                 return picked_cards
     
-    def open_monthly_boosters(self, user_id, set):
-        # 月次乱数初期化
-        random.seed(self.get_monthly_seed(user_id))
+    def open_boosters(self, user_id, set, mode=None, pack_num=0):
+        # 乱数初期化
+        random.seed(self.get_seed(user_id, mode))
 
         # 月初からの週数に応じて剥くパック数を決定
-        pack_num = self.get_monthly_pack_num()
+        if not pack_num:
+            pack_num = self.get_pack_num(mode)
         
         # 決定した数だけパックを剥く
         cards = []
@@ -48,21 +78,39 @@ class Generator():
         return cards
 
     def open_booster(self, set):
+        if set and not self.sealedable(set):
+            return None
+
         cards = []
 
         # レア/神話レア
-        cards = self.add_card(
-            set=set, 
-            rarity=Rarity.MYTHIC_RARE if random.random() < self.MYTHIC_RARE_RATE else Rarity.RARE, 
-            picked_cards=cards)
+        if set and self.set_info[set][Rarity.MYTHIC_RARE] == 0:
+            for _ in range(N_IN_PACK.RARE):
+                cards = self.add_card(
+                    set=set, 
+                    rarity=Rarity.RARE, 
+                    picked_cards=cards
+                )
+        else:
+            for _ in range(N_IN_PACK.RARE):
+                cards = self.add_card(
+                    set=set, 
+                    rarity=Rarity.MYTHIC_RARE if random.random() < self.MYTHIC_RARE_RATE else Rarity.RARE, 
+                    picked_cards=cards
+                )
 
         # アンコモン
-        for _ in range(3):
+        for _ in range(N_IN_PACK.UNCOMMON):
             cards = self.add_card(set=set, rarity=Rarity.UNCOMMON, picked_cards=cards)
         
         # コモン
-        for _ in range(10):
+        for _ in range(N_IN_PACK.COMMON):
             cards = self.add_card(set=set, rarity=Rarity.COMMON, picked_cards=cards)
+
+        # 基本土地
+        if set and self.set_info[set][Rarity.BASIC] > 0:
+            for _ in range(N_IN_PACK.BASIC):
+                cards = self.add_card(set=set, rarity=Rarity.BASIC, picked_cards=cards)
 
         return cards
 
@@ -103,6 +151,13 @@ class Generator():
                 continue
             cards.append(card)
         return cards
+    
+    def get_sets(self):
+        sets = []
+        for card in self.get_cards():
+            if card.set and card.set not in sets:
+                sets.append(card.set)
+        return sets
 
     def validate_decklist(self, user_id, set, decklist):
         pool = self.open_monthly_boosters(user_id, set)
@@ -110,7 +165,9 @@ class Generator():
         decklist_deck = self.decklist_to_decklist_cards(decklist, True)
         invalid_cards = {}
         for deck_key in decklist_deck:
-            if deck_key in decklist_pool.keys():
+            if deck_key in self.BASIC_LANDS:
+                continue
+            elif deck_key in decklist_pool.keys():
                 num_diff = int(decklist_pool[deck_key]) - int(decklist_deck[deck_key])
                 if num_diff < 0:
                     invalid_cards[deck_key] = abs(num_diff)
@@ -118,12 +175,20 @@ class Generator():
                 invalid_cards[deck_key] = decklist_deck[deck_key]
         return invalid_cards
 
+    def sealedable(self, set):
+        if self.set_info[set][Rarity.RARE] < N_IN_PACK.RARE:
+            return False
+        if self.set_info[set][Rarity.UNCOMMON] < N_IN_PACK.UNCOMMON:
+            return False
+        if self.set_info[set][Rarity.COMMON] < N_IN_PACK.COMMON:
+            return False
+        return True
+
     @classmethod
     def decklist_to_decklist_cards(cls, decklist, name_only=False):
         decklist_cards = {}
         decklist_lines = decklist.splitlines()
         for line in decklist_lines:
-            print(line)
             if re.match(r'^[0-9]', line):
                 num = int(line.split()[0])
                 if name_only:
@@ -137,40 +202,58 @@ class Generator():
         return decklist_cards
 
     @classmethod
-    def get_monthly_pack_num(cls):
+    def get_pack_num(cls, mode):
         # 月初からの週数に応じて剥くパック数を決定
-        monthly_dt = cls.get_monthly_datetime()
-        now = datetime.datetime.now(tz=cls.TZ_UTC)
-        td = now - monthly_dt
-        if td.days < 7:
-            pack_num = 4
-        elif td.days < 14:
-            pack_num = 6
-        elif td.days < 21:
-            pack_num = 9
+        if mode == Mode.MONTHLY:
+            td = datetime.now(tz=cls.TZ_UTC) - cls.get_index_datetime(mode)
+            if td.days < 7:
+                pack_num = 4
+            elif td.days < 14:
+                pack_num = 6
+            elif td.days < 21:
+                pack_num = 9
+            else:
+                pack_num = 12
         else:
-            pack_num = 12
+            pack_num = 6
+
         return pack_num
 
     @classmethod
-    def get_monthly_datetime(cls):
-        now = datetime.datetime.now(cls.TZ_UTC)
-        tomorrow = now + datetime.timedelta(days=1)
-        if tomorrow.day == 1 and now.hour >= cls.MONTHLY_RESET_HOUR:
-            dt = datetime.datetime(now.year, now.month, now.day, cls.MONTHLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
+    def get_index_datetime(cls, mode):
+        now = datetime.now(cls.TZ_UTC)
+
+        if mode == Mode.MONTHLY:
+            if (now+timedelta(days=1)).day == 1 and now.hour >= cls.MONTHLY_RESET_HOUR:    # 翌日が1日＝今日が月末日
+                dt = datetime(now.year, now.month, now.day, cls.MONTHLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
+            else:
+                dt = datetime(now.year, now.month - 1, calendar.monthrange(now.year, now.month - 1)[1], cls.MONTHLY_RESET_HOUR, tzinfo=cls.TZ_UTC) # 前月の月末日
+        elif mode == Mode.WEEKLY:
+            if now.weekday == 6 and now.hour > cls.WEEKLY_RESET_HOUR:    # 当日が日曜の場合
+                dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
+            else:
+                dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC) - timedelta(days=now.weekday+1)
+        elif mode == Mode.DAILY:
+            if now.hour > cls.DAILY_RESET_HOUR:
+                dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
+            else:
+                dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC) - timedelta(days=1)
         else:
-            dt = datetime.datetime(now.year, now.month - 1, calendar.monthrange(now.year, now.month - 1)[1], cls.MONTHLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
+            dt = now
+
         return dt
 
     @classmethod
-    def get_monthly_seed(cls, user_id):
+    def get_seed(cls, user_id, mode):
         return cls.get_hashed_int(
             user_id=user_id, 
-            timestamp=cls.get_monthly_datetime().timestamp())
+            timestamp=cls.get_index_datetime(mode).timestamp(),
+            mode=mode
+        )
 
     @classmethod
-    def get_hashed_int(cls, user_id, timestamp):
-        hash_str = user_id + "@" + str(timestamp)
+    def get_hashed_int(cls, user_id, timestamp, mode):
+        hash_str = user_id + "@" + str(timestamp) + "_" + mode
         hash_bytes = hash_str.encode(encoding="utf-8")
         hashed_bytes = sha512(hash_bytes)
         hashed_int = int(hashed_bytes.hexdigest(), 16)
