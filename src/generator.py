@@ -1,5 +1,6 @@
 import calendar
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from dateutil.tz import gettz
 from hashlib import sha512
 import random
@@ -25,6 +26,7 @@ class Mode():
     WEEKLY = "weekly"
     DAILY = "daily"
     RANDOM = "random"
+    STATIC = "static"
 
 
 class Generator():
@@ -62,9 +64,9 @@ class Generator():
                 picked_cards.append(card)
                 return picked_cards
     
-    def open_boosters(self, user_id, set, mode=None, pack_num=0):
+    def open_boosters(self, user_id, set, mode=None, pack_num=0, index_dt=None):
         # 乱数初期化
-        random.seed(self.get_seed(user_id, mode))
+        random.seed(self.get_seed(user_id, mode, index_dt))
 
         # 月初からの週数に応じて剥くパック数を決定
         if not pack_num:
@@ -220,7 +222,7 @@ class Generator():
         return pack_num
 
     @classmethod
-    def get_index_datetime(cls, mode):
+    def get_index_datetime(cls, mode, index_dt=None):
         now = datetime.now(cls.TZ_UTC)
 
         if mode == Mode.MONTHLY:
@@ -232,28 +234,48 @@ class Generator():
             if now.weekday == 6 and now.hour > cls.WEEKLY_RESET_HOUR:    # 当日が日曜の場合
                 dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
             else:
-                dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC) - timedelta(days=now.weekday+1)
+                dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC) - timedelta(days=now.weekday()+1)
         elif mode == Mode.DAILY:
             if now.hour > cls.DAILY_RESET_HOUR:
                 dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
             else:
                 dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC) - timedelta(days=1)
+        elif mode == Mode.STATIC and index_dt:
+            dt = index_dt
         else:
             dt = now
 
         return dt
 
     @classmethod
-    def get_seed(cls, user_id, mode):
+    def get_next_index_datetime(cls, mode):
+        index_dt = cls.get_index_datetime(mode)
+
+        if mode == Mode.MONTHLY:
+            dt = index_dt + relativedelta(month=1)
+        elif mode == Mode.WEEKLY:
+            dt = index_dt + timedelta(days=7)
+        elif mode == Mode.DAILY:
+            dt = index_dt + timedelta(days=1)
+        elif mode == Mode.RANDOM:
+            dt = index_dt
+        elif mode == Mode.STATIC:
+            dt = None
+        else:
+            dt = None
+
+        return dt
+
+    @classmethod
+    def get_seed(cls, user_id, mode, index_dt=None):
         return cls.get_hashed_int(
             user_id=user_id, 
-            timestamp=cls.get_index_datetime(mode).timestamp(),
-            mode=mode
+            timestamp=cls.get_index_datetime(mode, index_dt).timestamp(),
         )
 
     @classmethod
-    def get_hashed_int(cls, user_id, timestamp, mode):
-        hash_str = user_id + "@" + str(timestamp) + "_" + mode
+    def get_hashed_int(cls, user_id, timestamp):
+        hash_str = user_id + "@" + str(timestamp)
         hash_bytes = hash_str.encode(encoding="utf-8")
         hashed_bytes = sha512(hash_bytes)
         hashed_int = int(hashed_bytes.hexdigest(), 16)
