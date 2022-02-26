@@ -44,7 +44,7 @@ class GeneratorApp(Frame):
 
         # GUI
         self.master.title(self.APP_NAME)
-        self.master.geometry("340x230")
+        self.master.geometry("380x230")
         self.master_frame = Frame(self.master)
         self.master_frame.pack()
         self.user_id_label = Label(self.master_frame, text="ユーザー名#ID番号: ", anchor="w")
@@ -64,11 +64,15 @@ class GeneratorApp(Frame):
         self.mode_combobox.grid(row=2, column=1, sticky=W, padx=5, pady=5)
         self.start_time_label = Label(self.master_frame, text="基準開始日時: ", anchor="w")
         self.start_time_label.grid(row=3, column=0, sticky=W, padx=5, pady=5)
-        self.start_time_entry = Entry(self.master_frame, textvariable=self.sv_start_time, width=32)
-        self.start_time_entry.grid(row=3, column=1, sticky=W, padx=5, pady=5)
+        self.start_time_frame = Frame(self.master_frame)
+        self.start_time_frame.grid(row=3, column=1, sticky=W + E, padx=0, pady=0)
+        self.start_time_entry = Entry(self.start_time_frame, textvariable=self.sv_start_time, width=24)
+        self.start_time_entry.grid(row=0, column=0, sticky=W, padx=5, pady=5)
+        self.start_time_button = Button(self.start_time_frame, text="現在日時", command=self.set_start_time_now)
+        self.start_time_button.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
         self.end_time_label = Label(self.master_frame, text="基準終了日時: ", anchor="w")
         self.end_time_label.grid(row=4, column=0, sticky=W, padx=5, pady=5)
-        self.end_time_entry = Entry(self.master_frame, textvariable=self.sv_end_time, width=32, state='disabled')
+        self.end_time_entry = Entry(self.master_frame, textvariable=self.sv_end_time, width=24, state='disabled')
         self.end_time_entry.grid(row=4, column=1, sticky=W, padx=5, pady=5)
         self.pack_mode_label = Label(self.master_frame, text="パック数: ", anchor="w")
         self.pack_mode_label.grid(row=5, column=0, sticky=W + E, padx=5, pady=5)
@@ -86,6 +90,9 @@ class GeneratorApp(Frame):
         self.validate_button.grid(row=6, column=1, sticky=W + E, padx=5, pady=5)
         self.update_window()
 
+    def set_start_time_now(self):
+        self.sv_start_time.set(datetime.now().replace(microsecond=0).astimezone().strftime(self.DT_FORMAT))
+
     def update_window(self, _=None):
         self.change_mode(_)
         self.change_pack_mode(_)
@@ -102,14 +109,18 @@ class GeneratorApp(Frame):
         # TODO: configファイルにはUSTで保存して、表示するときはロケールに合わせて、generatorに渡すときはUSTで渡す
         if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC:
             self.start_time_entry.configure(state='normal')
+            self.start_time_button.configure(state='normal')
+            if self.config.get(ConfigKey.INDEX_TIME):
+                self.sv_start_time.set(self.config.get(ConfigKey.INDEX_TIME))
             if not self.sv_start_time.get():
-                self.sv_start_time.set(datetime.now().strftime(self.DT_FORMAT))
+                self.sv_start_time.set(datetime.now().replace(microsecond=0).astimezone().strftime(self.DT_FORMAT))
             if not self.sv_end_time.get():
-                self.sv_end_time.set(datetime.now().strftime(self.DT_FORMAT))
+                self.sv_end_time.set(datetime.now().replace(microsecond=0).astimezone().strftime(self.DT_FORMAT))
         else:
             self.sv_start_time.set(self.generator.get_index_datetime(self.get_mode_key(self.sv_mode.get())).astimezone().strftime(self.DT_FORMAT))
             self.sv_end_time.set(self.generator.get_next_index_datetime(self.get_mode_key(self.sv_mode.get())).astimezone().strftime(self.DT_FORMAT))
             self.start_time_entry.configure(state='disable')
+            self.start_time_button.configure(state='disable')
         self.change_pack_mode(_)
         
         # RANDOMならば検証ボタンを無効化する
@@ -165,9 +176,11 @@ class GeneratorApp(Frame):
         self.config[ConfigKey.USER_ID] = self.sv_user_id.get()
         self.config[ConfigKey.SET] = self.sv_set.get()
         self.config[ConfigKey.MODE] = self.get_mode_key(self.sv_mode.get())
-        self.config[ConfigKey.INDEX_TIME] = self.sv_start_time.get()
+        if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC:    # モード指定が固定の場合のみ保存
+            self.config[ConfigKey.INDEX_TIME] = self.sv_start_time.get()
         self.config[ConfigKey.PACK_MODE] = self.PACK_MODES.index(self.sv_pack_mode.get())
-        self.config[ConfigKey.PACK_NUM] = self.sv_pack_num.get()
+        if self.PACK_MODES.index(self.pack_mode_combobox.get()) == 1:   # パック数指定が手動の場合のみ保存
+            self.config[ConfigKey.PACK_NUM] = self.sv_pack_num.get()
         self.config_file.save(self.config)
 
     def run(self):
