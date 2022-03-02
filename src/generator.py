@@ -66,7 +66,7 @@ class Generator():
     
     def open_boosters(self, user_id, set, mode=None, pack_num=0, index_dt=None):
         # 乱数初期化
-        random.seed(self.get_seed(user_id, mode, index_dt))
+        random.seed(self.get_seed(user_id, set, mode, index_dt))
 
         # 月初からの週数に応じて剥くパック数を決定
         if not pack_num:
@@ -77,6 +77,8 @@ class Generator():
         for _ in range(pack_num):
             cards += self.open_booster(set)
         
+        # TODO: cardsをset_numberの順で昇順ソート
+
         return cards
 
     def open_booster(self, set):
@@ -161,8 +163,8 @@ class Generator():
                 sets.append(card.set)
         return sets
 
-    def validate_decklist(self, user_id, set, decklist):
-        pool = self.open_monthly_boosters(user_id, set)
+    def validate_decklist(self, user_id, set, decklist, mode, pack_num=0, index_dt=None):
+        pool = self.open_boosters(user_id, set, mode, pack_num, index_dt)
         decklist_pool = self.cards_to_decklist_cards(pool, True)
         decklist_deck = self.decklist_to_decklist_cards(decklist, True)
         invalid_cards = {}
@@ -252,7 +254,7 @@ class Generator():
         index_dt = cls.get_index_datetime(mode)
 
         if mode == Mode.MONTHLY:
-            dt = index_dt + relativedelta(month=1)
+            dt = index_dt + relativedelta(months=1)
         elif mode == Mode.WEEKLY:
             dt = index_dt + timedelta(days=7)
         elif mode == Mode.DAILY:
@@ -267,15 +269,16 @@ class Generator():
         return dt
 
     @classmethod
-    def get_seed(cls, user_id, mode, index_dt=None):
+    def get_seed(cls, user_id, set, mode, index_dt=None):
         return cls.get_hashed_int(
             user_id=user_id, 
-            timestamp=cls.get_index_datetime(mode, index_dt).timestamp(),
+            set=set,
+            timestamp=cls.get_index_datetime(mode, index_dt).timestamp()
         )
 
     @classmethod
-    def get_hashed_int(cls, user_id, timestamp):
-        hash_str = user_id + "@" + str(timestamp)
+    def get_hashed_int(cls, user_id, set, timestamp):
+        hash_str = user_id + "@" + set + "@" + str(timestamp)
         hash_bytes = hash_str.encode(encoding="utf-8")
         hashed_bytes = sha512(hash_bytes)
         hashed_int = int(hashed_bytes.hexdigest(), 16)

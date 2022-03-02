@@ -13,7 +13,7 @@ class GeneratorApp(Frame):
         super().__init__(master)
 
         # 定数
-        self.APP_NAME = "Magic League Generator"
+        self.APP_NAME = "Sealed Generator"
         self.CONFIG_PATH = "config\\config.json"
         self.MODES = {
             Mode.DAILY: "日次", 
@@ -45,6 +45,7 @@ class GeneratorApp(Frame):
         # GUI
         self.master.title(self.APP_NAME)
         self.master.geometry("380x230")
+        self.master.protocol('WM_DELETE_WINDOW', self.close_window)
         self.master_frame = Frame(self.master)
         self.master_frame.pack()
         self.user_id_label = Label(self.master_frame, text="ユーザー名#ID番号: ", anchor="w")
@@ -89,6 +90,10 @@ class GeneratorApp(Frame):
         self.validate_button = Button(self.master_frame, text="クリップボードから検証", command=self.validate)
         self.validate_button.grid(row=6, column=1, sticky=W + E, padx=5, pady=5)
         self.update_window()
+
+    def close_window(self):
+        self.save_config()
+        self.master.destroy()
 
     def set_start_time_now(self):
         self.sv_start_time.set(datetime.now().replace(microsecond=0).astimezone().strftime(self.DT_FORMAT))
@@ -145,26 +150,39 @@ class GeneratorApp(Frame):
 
     def export(self):
         self.save_config()
-        picked_cards = self.generator.open_boosters(
-            user_id=self.config.get(ConfigKey.USER_ID),
-            set=self.config.get(ConfigKey.SET),
-            mode=self.config.get(ConfigKey.MODE),
-            pack_num=int(self.config.get(ConfigKey.PACK_NUM)),
-            index_dt=
-                datetime.strptime(self.sv_start_time.get(), self.DT_FORMAT)
-                if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
-                else None
-        )
-        decklist = self.generator.cards_to_decklist(picked_cards)
-        copy(decklist)
-        print(paste())
-        showinfo(self.APP_NAME, message="カードプールがクリップボードにコピーされました。")
+        try:
+            picked_cards = self.generator.open_boosters(
+                user_id=self.sv_user_id.get(),
+                set=self.sv_set.get(),
+                mode=self.get_mode_key(self.sv_mode.get()),
+                pack_num=int(self.sv_pack_num.get()),
+                index_dt=
+                    datetime.strptime(self.sv_start_time.get(), self.DT_FORMAT)
+                    if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
+                    else None
+            )
+            decklist = self.generator.cards_to_decklist(picked_cards)
+            copy(decklist)
+            print(paste())
+            showinfo(self.APP_NAME, message="カードプールがクリップボードにコピーされました。")
+        except ValueError as e:
+            showwarning(self.APP_NAME, message="カードプールの生成に失敗しました。\nパック数や基準開始日時が不正でないか確認してください。\n" + str(e))
 
     def validate(self):
         self.save_config()
         decklist = paste()
         if decklist:
-            invalid_cards = self.generator.validate_decklist(self.config.get(ConfigKey.USER_ID), self.config.get(ConfigKey.SET), decklist)
+            invalid_cards = self.generator.validate_decklist(
+                user_id=self.sv_user_id.get(),
+                set=self.sv_set.get(),
+                decklist=decklist,
+                mode=self.get_mode_key(self.sv_mode.get()),
+                pack_num=int(self.sv_pack_num.get()),
+                index_dt=
+                    datetime.strptime(self.sv_start_time.get(), self.DT_FORMAT)
+                    if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
+                    else None
+            )
             if not invalid_cards:
                 showinfo(self.APP_NAME, message="デッキリストは適正です。")
             else:
@@ -191,4 +209,3 @@ if __name__ == "__main__":
     root = Tk()
     app = GeneratorApp(master=root)
     app.run()
-    app.save_config()
