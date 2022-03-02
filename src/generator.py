@@ -319,11 +319,9 @@ class Generator():
         for card in cards:
             set_numbers.append(card.set_number)
         set_numbers.sort()
-        print(set_numbers)
         for set_number in set_numbers:
             for card in cards:
                 if card.set_number == set_number:
                     results.append(card)
                     break
-        print(results)
         return results
