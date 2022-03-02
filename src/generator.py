@@ -77,8 +77,6 @@ class Generator():
         for _ in range(pack_num):
             cards += self.open_booster(set)
         
-        # TODO: cardsをset_numberの順で昇順ソート
-
         return cards
 
     def open_booster(self, set):
@@ -313,3 +311,19 @@ class Generator():
             else:
                 decklist += str(decklist_cards[key]) + " " + key + "\n"
         return decklist
+
+    @classmethod
+    def sort_cards_by_set_number(self, cards):
+        set_numbers = []
+        results = []
+        for card in cards:
+            set_numbers.append(card.set_number)
+        set_numbers.sort()
+        print(set_numbers)
+        for set_number in set_numbers:
+            for card in cards:
+                if card.set_number == set_number:
+                    results.append(card)
+                    break
+        print(results)
+        return results

@@ -161,6 +161,7 @@ class GeneratorApp(Frame):
                     if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
                     else None
             )
+            picked_cards = self.generator.sort_cards_by_set_number(picked_cards)
             decklist = self.generator.cards_to_decklist(picked_cards)
             copy(decklist)
             print(paste())
