@@ -28,6 +28,21 @@ class Mode():
     RANDOM = "random"
     STATIC = "static"
 
+class Key():
+    DECK = "deck"
+    SIDEBOARD = "sideboard"
+    CREATURE = "creature"
+    NONCREATURE = "noncreature"
+    LAND = "land"
+    BASIC = "basic"
+    NONBASIC = "nonbasic"
+    MV_1 = "-1"
+    MV_2 = "2"
+    MV_3 = "3"
+    MV_4 = "4"
+    MV_5 = "5"
+    MV_6 = "6-"
+
 
 class Generator():
 
@@ -116,8 +131,8 @@ class Generator():
 
         return cards
 
-    def get_cards(self, name="", pretty_name="", cost=None, color_identity=None, card_type="", sub_types="",
-                    abilities=None, set="", rarity="", collectible=True, set_number=0, mtga_id=0, 
+    def get_cards(self, name="", pretty_name="", cost=None, color_identity=None, card_type="", sub_type="", super_type="",
+                    ability="", set="", rarity="", collectible=True, set_number=0, mtga_id=0, 
                     is_token=False, is_secondary_card=False, is_rebalanced=False):
         cards = []
         for card in self.cards:
@@ -131,9 +146,11 @@ class Generator():
                 continue
             if card_type and card.card_type != card_type:
                 continue
-            if sub_types and card.sub_types != sub_types:
+            if sub_type and not sub_type in card.sub_types:
                 continue
-            if abilities and card.abilities != abilities:
+            if super_type and not super_type in card.super_type:
+                continue
+            if ability and not ability in card.abilities:
                 continue
             if set and card.set != set:
                 continue
@@ -186,6 +203,24 @@ class Generator():
             return False
         return True
 
+    def decklist_cards_to_cards(self, decklist_cards, name_only=False):
+        rst = []
+        for key in decklist_cards.keys():
+            n = decklist_cards[key]
+            if name_only:
+                name = key
+                set = ""
+                set_number = 0
+            else:
+                name = key.split()[0]
+                set = key.split()[1].strip("()")
+                set_number = int(key.split()[2])
+            cards = self.get_cards(pretty_name=name, set=set, set_number=set_number)
+            if cards:
+                for _ in range(n):
+                    rst.append(cards[-1])
+        return rst
+    
     @classmethod
     def decklist_to_decklist_cards(cls, decklist, name_only=False):
         decklist_cards = {}
@@ -325,31 +360,86 @@ class Generator():
                     results.append(card)
                     break
         return results
-
+    
     @classmethod
-    def is_creature_card(cls, card):
-        if "クリーチャー" in card.card_types or "Creature" in card.card_types:
-            return True
-        else:
-            return False
+    def separate_decklist_to_deck_and_sideboard(cls, decklist):
+        is_deck = True
+        deck = "デッキ\n"
+        sideboard = "サイドボード\n"
+        decklist_lines = decklist.splitlines()
+        for line in decklist_lines:
+            if line in ["サイドボード", "Sideboard"]:
+                is_deck = False
+            elif re.match(r'^[0-9]', line):
+                if is_deck:
+                    deck += line + "\n"
+                else:
+                    sideboard += line + "\n"
+        return deck, sideboard
 
-    @classmethod
-    def is_land_card(cls, card):
-        if "土地" in card.card_types or "Land" in card.card_types:
-            return True
-        else:
-            return False
+    def cards_to_decklist_image_array(self, cards):
+        rst = {
+            Key.CREATURE: {
+                Key.MV_1: [],
+                Key.MV_2: [],
+                Key.MV_3: [],
+                Key.MV_4: [],
+                Key.MV_5: [],
+                Key.MV_6: []
+            }, 
+            Key.NONCREATURE: {
+                Key.MV_1: [],
+                Key.MV_2: [],
+                Key.MV_3: [],
+                Key.MV_4: [],
+                Key.MV_5: [],
+                Key.MV_6: []
+            },
+            Key.LAND: {
+                Key.BASIC: [],
+                Key.NONBASIC: []
+            }
+        }
 
-    @classmethod
-    def is_noncreature_spell_card(cls, card):
-        if not cls.is_creature_card(card) and not cls.is_land_card(card):
-            return True
-        else:
-            return False
+        for card in cards:
+            if card.is_creature_card:
+                key1 = Key.CREATURE
+            elif card.is_noncreature_spell_card:
+                key1 = Key.NONCREATURE
+            elif card.is_land_card:
+                key1 = Key.LAND
+            if key1 != Key.LAND:
+                if card.cmc <= 1:
+                    key2 = Key.MV_1
+                elif card.cmc == 2:
+                    key2 = Key.MV_2
+                elif card.cmc == 3:
+                    key2 = Key.MV_3
+                elif card.cmc == 4:
+                    key2 = Key.MV_4
+                elif card.cmc == 5:
+                    key2 = Key.MV_5
+                elif card.cmc >= 6:
+                    key2 = Key.MV_6
+            else:
+                if card.is_basic:
+                    key2 = Key.BASIC
+                else:
+                    key2 = Key.NONBASIC
+            rst[key1][key2].append(card)
 
-    @classmethod
-    def is_basic_land_card(cls, card):
-        if cls.is_land_card(card) and ("基本" in card.super_types or "Basic" in card.super_types):
-            return True
-        else:
-            return False
+        return rst
+
+    def decklist_to_decklist_image_array(self, decklist):
+        rst = {
+            Key.DECK: {},
+            Key.SIDEBOARD: {}
+        }
+
+        deck, sideboard = self.separate_decklist_to_deck_and_sideboard(decklist)
+        deck_cards = self.decklist_cards_to_cards(self.decklist_to_decklist_cards(deck))
+        sideboard_cards = self.decklist_cards_to_cards(self.decklist_to_decklist_cards(sideboard))
+        rst[Key.DECK] = self.cards_to_decklist_image_array(deck_cards)
+        rst[Key.SIDEBOARD] = self.cards_to_decklist_image_array(sideboard_cards)
+
+        return rst
