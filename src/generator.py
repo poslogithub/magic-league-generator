@@ -313,7 +313,7 @@ class Generator():
         return decklist
 
     @classmethod
-    def sort_cards_by_set_number(self, cards):
+    def sort_cards_by_set_number(cls, cards):
         set_numbers = []
         results = []
         for card in cards:
@@ -325,3 +325,31 @@ class Generator():
                     results.append(card)
                     break
         return results
+
+    @classmethod
+    def is_creature_card(cls, card):
+        if "クリーチャー" in card.card_types or "Creature" in card.card_types:
+            return True
+        else:
+            return False
+
+    @classmethod
+    def is_land_card(cls, card):
+        if "土地" in card.card_types or "Land" in card.card_types:
+            return True
+        else:
+            return False
+
+    @classmethod
+    def is_noncreature_spell_card(cls, card):
+        if not cls.is_creature_card(card) and not cls.is_land_card(card):
+            return True
+        else:
+            return False
+
+    @classmethod
+    def is_basic_land_card(cls, card):
+        if cls.is_land_card(card) and ("基本" in card.super_types or "Basic" in card.super_types):
+            return True
+        else:
+            return False
