@@ -82,12 +82,8 @@ class Generator():
     def open_boosters(self, user_id, set, mode=None, pack_num=0, index_dt=None):
         # 乱数初期化
         random.seed(self.get_seed(user_id, set, mode, index_dt))
-
-        # 月初からの週数に応じて剥くパック数を決定
-        if not pack_num:
-            pack_num = self.get_pack_num(mode)
         
-        # 決定した数だけパックを剥く
+        # パックを剥く
         cards = []
         for _ in range(pack_num):
             cards += self.open_booster(set)
@@ -178,8 +174,11 @@ class Generator():
                 sets.append(card.set)
         return sets
 
-    def validate_decklist(self, user_id, set, decklist, mode, pack_num=0, index_dt=None):
-        pool = self.open_boosters(user_id, set, mode, pack_num, index_dt)
+    def validate_decklist(self, user_id, sets, decklist, mode, pack_nums, index_dt=None):
+        pool = []
+        for i in range(len(sets)):
+            if sets[i] and pack_nums[i]:
+                pool += self.open_boosters(user_id, sets[i], mode, pack_nums[i], index_dt)
         decklist_pool = self.cards_to_decklist_cards(pool, True)
         decklist_deck = self.decklist_to_decklist_cards(decklist, True)
         invalid_cards = {}
@@ -212,9 +211,9 @@ class Generator():
                 set = ""
                 set_number = 0
             else:
-                name = key.split()[0]
-                set = key.split()[1].strip("()")
-                set_number = int(key.split()[2])
+                name = " ".join(key.split()[0:-2])
+                set = key.split()[-2].strip("()")
+                set_number = int(key.split()[-1])
             cards = self.get_cards(pretty_name=name, set=set, set_number=set_number)
             if cards:
                 for _ in range(n):
@@ -229,7 +228,7 @@ class Generator():
             if re.match(r'^[0-9]', line):
                 num = int(line.split()[0])
                 if name_only:
-                    decklist_card_str = line.split()[1]
+                    decklist_card_str = " ".join(line.split()[1:-2])
                 else:
                     decklist_card_str = " ".join(line.split()[1:])
                 if decklist_cards.get(decklist_card_str):   # デッキとサイドボードに分かれている可能性があるため
@@ -342,7 +341,7 @@ class Generator():
         decklist = "デッキ\n"
         for key in decklist_cards.keys():
             if name_only:
-                decklist += str(decklist_cards[key]) + " " + key.split()[0] + "\n"
+                decklist += str(decklist_cards[key]) + " " + " ".join(key.split()[0:-2]) + "\n"
             else:
                 decklist += str(decklist_cards[key]) + " " + key + "\n"
         return decklist
