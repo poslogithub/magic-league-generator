@@ -79,16 +79,22 @@ class Generator():
                 picked_cards.append(card)
                 return picked_cards
     
-    def open_boosters(self, user_id, set, mode=None, pack_num=0, index_dt=None):
-        # 乱数初期化
-        random.seed(self.get_seed(user_id, set, mode, index_dt))
+    def open_boosters(self, user_id, sets, pack_nums, mode=None, index_dt=None):
+        pool = []
+        for i in range(len(sets)):
+            if sets[i] and pack_nums[i]:
+                # 乱数初期化
+                random.seed(self.get_seed(user_id, sets[i], mode, index_dt))
+                
+                # パックを剥く
+                cards = []
+                for _ in range(pack_nums[i]):
+                    cards += self.open_booster(sets[i])
+                cards = self.sort_cards_by_set_number(cards)
         
-        # パックを剥く
-        cards = []
-        for _ in range(pack_num):
-            cards += self.open_booster(set)
-        
-        return cards
+                pool += cards
+
+        return pool
 
     def open_booster(self, set):
         if set and not self.sealedable(set):
@@ -174,13 +180,13 @@ class Generator():
                 sets.append(card.set)
         return sets
 
-    def validate_decklist(self, user_id, sets, decklist, mode, pack_nums, index_dt=None):
-        pool = []
-        for i in range(len(sets)):
-            if sets[i] and pack_nums[i]:
-                pool += self.open_boosters(user_id, sets[i], mode, pack_nums[i], index_dt)
+    def validate_decklist(self, decklist, user_id, sets, pack_nums, mode=None, index_dt=None):
+        pool = self.open_boosters(user_id, sets, pack_nums, mode, index_dt)
+        print(pool)
         decklist_pool = self.cards_to_decklist_cards(pool, True)
         decklist_deck = self.decklist_to_decklist_cards(decklist, True)
+        print(decklist_pool)
+        print(decklist_deck)
         invalid_cards = {}
         for deck_key in decklist_deck:
             if deck_key in self.BASIC_LANDS:
@@ -192,6 +198,10 @@ class Generator():
             else:
                 invalid_cards[deck_key] = decklist_deck[deck_key]
         return invalid_cards
+    
+    def correct_decklist():
+        #TODO
+        pass
 
     def sealedable(self, set):
         if self.set_info[set][Rarity.RARE] < N_IN_PACK.RARE:
