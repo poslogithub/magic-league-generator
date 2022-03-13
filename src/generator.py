@@ -182,11 +182,8 @@ class Generator():
 
     def validate_decklist(self, decklist, user_id, sets, pack_nums, mode=None, index_dt=None):
         pool = self.open_boosters(user_id, sets, pack_nums, mode, index_dt)
-        print(pool)
         decklist_pool = self.cards_to_decklist_cards(pool, True)
         decklist_deck = self.decklist_to_decklist_cards(decklist, True)
-        print(decklist_pool)
-        print(decklist_deck)
         invalid_cards = {}
         for deck_key in decklist_deck:
             if deck_key in self.BASIC_LANDS:
