@@ -56,27 +56,28 @@ class GeneratorApp(Frame):
         self.user_id_label.grid(row=0, column=0, sticky=W, padx=5, pady=5)
         self.user_id_entry = Entry(self.master_frame, textvariable=self.sv_user_id, width=32)
         self.user_id_entry.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
-        self.set_label = Label(self.master_frame, text="セット: ", anchor="w")
-        self.set_label.grid(row=1, column=0, sticky=W, padx=5, pady=5)
-        self.sets_frame = Frame(self.master_frame)
-        self.sets_frame.grid(row=1, column=1, sticky=W + E, padx=0, pady=0)
-        self.set_comboboxs = []
-        for i in range(len(self.config[ConfigKey.SETS])):
-            self.set_comboboxs.append(Combobox(self.sets_frame, width=6, values=self.sets, textvariable=self.sv_sets[i], state="readonly"))
-            self.set_comboboxs[i].current(self.sets.index(self.sv_sets[i].get()) if self.sv_sets[i].get() else 0)
-            self.set_comboboxs[i].grid(row=0, column=i, sticky=W, padx=5, pady=5)
-        self.pack_mode_label = Label(self.master_frame, text="パック数: ", anchor="w")
+        self.set_pack_label_frame = Frame(self.master_frame)
+        self.set_pack_label_frame.grid(row=1, column=0, sticky=W, padx=0, pady=0)
+        self.set_label = Label(self.set_pack_label_frame, text="セット: ", anchor="w")
+        self.set_label.grid(row=0, column=0, sticky=W, padx=5, pady=5)
+        self.pack_num_label = Label(self.set_pack_label_frame, text="パック数: ", anchor="w")
+        self.pack_num_label.grid(row=1, column=0, sticky=W + E + N, padx=5, pady=5)
+        self.pack_mode_label = Label(self.set_pack_label_frame, text="", anchor="w")
         self.pack_mode_label.grid(row=2, column=0, sticky=W + E + N, padx=5, pady=5)
-        self.pack_frame = Frame(self.master_frame)
-        self.pack_frame.grid(row=2, column=1, sticky=W + E, padx=0, pady=0)
+        self.sets_packes_frame = Frame(self.master_frame)
+        self.sets_packes_frame.grid(row=1, column=1, sticky=W + E, padx=0, pady=0)
+        self.set_comboboxs = []
         self.pack_num_entries = []
-        for i in range(len(self.config[ConfigKey.PACK_NUMS])):
-            self.pack_num_entries.append(Entry(self.pack_frame, textvariable=self.sv_pack_nums[i], width=9))
-            self.pack_num_entries[i].grid(row=0, column=i, sticky=W, padx=5, pady=5)
-        self.pack_mode_combobox = Combobox(self.pack_frame, width=6, values=self.PACK_MODES, textvariable=self.sv_pack_mode, state="readonly")
+        for i in range(len(self.config[ConfigKey.SETS])):
+            self.set_comboboxs.append(Combobox(self.sets_packes_frame, width=6, values=self.sets, textvariable=self.sv_sets[i], state="readonly"))
+            self.set_comboboxs[i].current(self.sets.index(self.sv_sets[i].get()) if self.sv_sets[i].get() else 0)
+            self.set_comboboxs[i].grid(row=0, column=i, sticky=W + E, padx=5, pady=5)
+            self.pack_num_entries.append(Entry(self.sets_packes_frame, textvariable=self.sv_pack_nums[i], width=9))
+            self.pack_num_entries[i].grid(row=1, column=i, sticky=W, padx=5, pady=5)
+        self.pack_mode_combobox = Combobox(self.sets_packes_frame, width=6, values=self.PACK_MODES, textvariable=self.sv_pack_mode, state="readonly")
         self.pack_mode_combobox.current(self.PACK_MODES.index(self.sv_pack_mode.get()) if self.sv_pack_mode.get() else 0)
         self.pack_mode_combobox.bind('<<ComboboxSelected>>', self.change_pack_mode)
-        self.pack_mode_combobox.grid(row=1, column=0, sticky=W, padx=5, pady=5)
+        self.pack_mode_combobox.grid(row=2, column=0, sticky=W, padx=5, pady=5)
         self.mode_label = Label(self.master_frame, text="モード: ", anchor="w")
         self.mode_label.grid(row=3, column=0, sticky=W, padx=5, pady=5)
         self.mode_combobox = Combobox(self.master_frame, width=6, values=list(self.MODES.values()), textvariable=self.sv_mode, state="readonly")
@@ -95,10 +96,12 @@ class GeneratorApp(Frame):
         self.end_time_label.grid(row=5, column=0, sticky=W, padx=5, pady=5)
         self.end_time_entry = Entry(self.master_frame, textvariable=self.sv_end_time, width=24, state='disabled')
         self.end_time_entry.grid(row=5, column=1, sticky=W, padx=5, pady=5)
-        self.export_button = Button(self.master_frame, text="エクスポート", command=self.export)
-        self.export_button.grid(row=6, column=0, sticky=W + E, padx=5, pady=5)
-        self.validate_button = Button(self.master_frame, text="クリップボードから検証", command=self.validate)
-        self.validate_button.grid(row=6, column=1, sticky=W + E, padx=5, pady=5)
+        self.export_frame = Frame(self.master)
+        self.export_frame.pack()
+        self.export_button = Button(self.export_frame, text="エクスポート", width=20, command=self.export)
+        self.export_button.grid(row=0, column=0, sticky=W + E, padx=5, pady=5)
+        self.validate_button = Button(self.export_frame, text="クリップボードから検証", width=20, command=self.validate)
+        self.validate_button.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
         self.update_window()
 
     def close_window(self):
@@ -166,23 +169,23 @@ class GeneratorApp(Frame):
     def export(self):
         self.save_config()
         picked_cards = []
+        sets = []
+        pack_nums = []
         try:
             for i in range(len(self.config.get(ConfigKey.SETS))):
-                if not self.sv_sets[i].get() or not self.sv_pack_nums[i].get():
-                    continue
-                picked_set_cards = self.generator.open_boosters(
-                    user_id=self.sv_user_id.get(),
-                    set=self.sv_sets[i].get(),
-                    mode=self.get_mode_key(self.sv_mode.get()),
-                    pack_num=int(self.sv_pack_nums[i].get()),
-                    index_dt=
-                        datetime.strptime(self.sv_start_time.get(), self.DT_FORMAT)
-                        if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
-                        else None
-                )
-                picked_set_cards = self.generator.sort_cards_by_set_number(picked_set_cards)
-                picked_cards += picked_set_cards
-
+                sets.append(self.sv_sets[i].get())
+                pack_nums.append(int(self.sv_pack_nums[i].get()))
+            picked_cards = self.generator.open_boosters(
+                user_id=self.sv_user_id.get(),
+                sets=sets,
+                pack_nums=pack_nums,
+                mode=self.get_mode_key(self.sv_mode.get()),
+                index_dt=
+                    datetime.strptime(self.sv_start_time.get(), self.DT_FORMAT)
+                    if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
+                    else None
+            )
+            #picked_cards = self.generator.sort_cards_by_set_number(picked_cards)
             decklist = self.generator.cards_to_decklist(picked_cards)
             copy(decklist)
             print(paste())
@@ -201,11 +204,11 @@ class GeneratorApp(Frame):
                 sets.append(self.sv_sets[i].get())
                 pack_nums.append(int(self.sv_pack_nums[i].get()))
             invalid_cards = self.generator.validate_decklist(
+                decklist=decklist,
                 user_id=self.sv_user_id.get(),
                 sets=sets,
-                decklist=decklist,
-                mode=self.get_mode_key(self.sv_mode.get()),
                 pack_nums=pack_nums,
+                mode=self.get_mode_key(self.sv_mode.get()),
                 index_dt=
                     datetime.strptime(self.sv_start_time.get(), self.DT_FORMAT)
                     if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
