@@ -1,7 +1,8 @@
 from datetime import datetime
+from email import generator
 from re import S
 from tkinter import Button, Frame, StringVar, Tk, E, N, W
-from tkinter.messagebox import showinfo, showwarning
+from tkinter.messagebox import askyesno, showinfo, showwarning
 from tkinter.ttk import Combobox, Entry, Label
 from generator import Generator, Mode
 from generator_config import GeneratorConfigFile, ConfigKey
@@ -166,16 +167,14 @@ class GeneratorApp(Frame):
         value_list = list(self.MODES.values())
         value_list.index(mode_value)
 
-    def export(self):
-        self.save_config()
-        picked_cards = []
+    def get_pool(self):
         sets = []
         pack_nums = []
         try:
             for i in range(len(self.config.get(ConfigKey.SETS))):
                 sets.append(self.sv_sets[i].get())
                 pack_nums.append(int(self.sv_pack_nums[i].get()))
-            picked_cards = self.generator.open_boosters(
+            pool = self.generator.open_boosters(
                 user_id=self.sv_user_id.get(),
                 sets=sets,
                 pack_nums=pack_nums,
@@ -185,39 +184,44 @@ class GeneratorApp(Frame):
                     if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
                     else None
             )
-            #picked_cards = self.generator.sort_cards_by_set_number(picked_cards)
-            decklist = self.generator.cards_to_decklist(picked_cards)
-            copy(decklist)
-            print(paste())
-            showinfo(self.APP_NAME, message="カードプールがクリップボードにコピーされました。")
+            return pool
         except ValueError as e:
             showwarning(self.APP_NAME, message="カードプールの生成に失敗しました。\nパック数や基準開始日時が不正でないか確認してください。\n" + str(e))
+            return None
+
+    def export(self):
+        self.save_config()
+        picked_cards = self.get_pool()
+        decklist = self.generator.cards_to_decklist(picked_cards)
+        copy(decklist)
+        print(paste())
+        showinfo(self.APP_NAME, message="カードプールがクリップボードにコピーされました。")
 
     def validate(self):
         self.save_config()
         invalid_cards = []
         decklist = paste()
         if decklist:
-            sets = []
-            pack_nums = []
-            for i in range(len(self.config.get(ConfigKey.SETS))):
-                sets.append(self.sv_sets[i].get())
-                pack_nums.append(int(self.sv_pack_nums[i].get()))
-            invalid_cards = self.generator.validate_decklist(
-                decklist=decklist,
-                user_id=self.sv_user_id.get(),
-                sets=sets,
-                pack_nums=pack_nums,
-                mode=self.get_mode_key(self.sv_mode.get()),
-                index_dt=
-                    datetime.strptime(self.sv_start_time.get(), self.DT_FORMAT)
-                    if self.get_mode_key(self.sv_mode.get()) == Mode.STATIC
-                    else None
-            )
+            pool = self.get_pool()
+            invalid_cards = self.generator.validate_decklist(decklist, pool)
+            diff_cards = self.generator.get_diff_cards(pool, decklist)
             if not invalid_cards:
-                showinfo(self.APP_NAME, message="デッキリストは適正です。")
+                if not diff_cards:
+                    if askyesno(self.APP_NAME, message="デッキリストは適正です。\n不足カードをサイドボードに追加したデッキリストをエクスポートしますか？"):
+                        decklist = self.generator.add_diff_to_sideboard(decklist, pool)
+                        copy(decklist)
+                        print(paste())
+                        showinfo(self.APP_NAME, message="デッキリストがクリップボードにコピーされました。")
+                else:
+                    showinfo(self.APP_NAME, message="デッキリストは適正です。")
             else:
-                showwarning(self.APP_NAME, message="以下のカードが不正です。\n"+str(invalid_cards))
+                if askyesno(self.APP_NAME, message="以下のカードが不正です。\n\n"+str(invalid_cards)+"\n\n不正カードを除外したデッキリストをエクスポートしますか？"):
+                    decklist = self.generator.strip_invalid_cards_from_decklist(decklist, invalid_cards)
+                    decklist = self.generator.add_diff_to_sideboard(decklist, pool)
+                    copy(decklist)
+                    print(paste())
+                    showinfo(self.APP_NAME, message="カードプールがクリップボードにコピーされました。")
+
         else:
             showwarning(self.APP_NAME, message="クリップボードが空です。")
         

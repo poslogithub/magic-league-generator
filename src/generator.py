@@ -52,7 +52,7 @@ class Generator():
     DAILY_RESET_HOUR = 8
 
     MYTHIC_RARE_RATE = 1 / 7.4
-    BASIC_LANDS = ["平地", "島", "沼", "山", "森"]
+    BASIC_LANDS = ["平地", "島", "沼", "山", "森", "Plains", "Island", "Swamp", "Mountain", "Forest"]
 
     def __init__(self, pool):
         self.cards = pool.cards
@@ -180,8 +180,7 @@ class Generator():
                 sets.append(card.set)
         return sets
 
-    def validate_decklist(self, decklist, user_id, sets, pack_nums, mode=None, index_dt=None):
-        pool = self.open_boosters(user_id, sets, pack_nums, mode, index_dt)
+    def validate_decklist(self, decklist, pool):
         decklist_pool = self.cards_to_decklist_cards(pool, True)
         decklist_deck = self.decklist_to_decklist_cards(decklist, True)
         invalid_cards = {}
@@ -226,6 +225,49 @@ class Generator():
                 for _ in range(n):
                     rst.append(cards[-1])
         return rst
+
+    def strip_invalid_cards_from_decklist(self, decklist, invalid_cards):
+        deck, sideboard = self.separate_decklist_to_deck_and_sideboard(decklist)
+        deck_cards = self.decklist_to_decklist_cards(deck)
+        sideboard_cards = self.decklist_to_decklist_cards(sideboard)
+        sideboard_cards, invalid_cards = self.strip_invalid_cards_from_decklist_cards(sideboard_cards, invalid_cards)
+        if invalid_cards:
+            deck_cards, invalid_cards = self.strip_invalid_cards_from_decklist_cards(deck_cards, invalid_cards)
+        deck = self.decklist_cards_to_decklist(deck_cards)
+        sideboard = self.decklist_cards_to_decklist(sideboard_cards, is_sideboard=True)
+        return deck + "\n" + sideboard
+    
+    def strip_invalid_cards_from_decklist_cards(self, decklist_cards, invalid_cards):
+        for invalid_card in invalid_cards.keys():    # invalid_card: カード名
+            for decklist_card in decklist_cards.keys():  # decklist_card: カード名 (セット名) セット番号
+                if decklist_card.startswith(invalid_card+" "):
+                    if decklist_cards[decklist_card] > invalid_cards[invalid_card]:
+                        decklist_cards[decklist_card] -= invalid_cards[invalid_card]
+                        invalid_cards[invalid_card] = 0
+                        break
+                    elif decklist_cards[decklist_card] == invalid_cards[invalid_card]:
+                        decklist_cards[decklist_card] = 0
+                        invalid_cards[invalid_card] = 0
+                        break
+                    elif decklist_cards[decklist_card] < invalid_cards[invalid_card]:
+                        invalid_cards[invalid_card] -= decklist_cards[decklist_card]
+                        decklist_cards[decklist_card] = 0
+        
+        return decklist_cards, invalid_cards
+    
+    def get_diff_cards(self, pool, decklist):
+        pool_cards = self.cards_to_decklist_cards(pool)
+        decklist_cards = self.decklist_to_decklist_cards(decklist, name_only=True)
+        diff_cards = self.strip_invalid_cards_from_decklist_cards(pool_cards, decklist_cards)
+        return diff_cards
+
+    def add_diff_to_sideboard(self, decklist, pool):
+        adding_cards = self.get_diff_cards(self, pool, decklist)
+        adding_str = self.decklist_cards_to_decklist(adding_cards, is_sideboard=True)
+        if "サイドボード\n" in decklist or "Sideboard\n" in decklist:
+            adding_str.replace("サイドボード\n", "")
+            adding_str.replace("Sideboard\n", "")
+        return decklist + adding_str
     
     @classmethod
     def decklist_to_decklist_cards(cls, decklist, name_only=False):
@@ -344,9 +386,11 @@ class Generator():
         return decklist_cards
     
     @classmethod
-    def decklist_cards_to_decklist(cls, decklist_cards, name_only=False):
-        decklist = "デッキ\n"
+    def decklist_cards_to_decklist(cls, decklist_cards, name_only=False, is_sideboard=False):
+        decklist = ("デッキ" if not is_sideboard else "サイドボード")+"\n"
         for key in decklist_cards.keys():
+            if decklist_cards[key] == 0:
+                continue
             if name_only:
                 decklist += str(decklist_cards[key]) + " " + " ".join(key.split()[0:-2]) + "\n"
             else:
