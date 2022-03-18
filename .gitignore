@@ -116,3 +116,4 @@ dmypy.json
 config/config.json
 src/config/config.json
 src/icon.ico
+src/test.py

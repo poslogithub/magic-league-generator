@@ -207,13 +207,13 @@ class GeneratorApp(Frame):
             diff_cards = self.generator.get_diff_cards(pool, decklist)
             if not invalid_cards:
                 if not diff_cards:
+                    showinfo(self.APP_NAME, message="デッキリストは適正です。")
+                else:
                     if askyesno(self.APP_NAME, message="デッキリストは適正です。\n不足カードをサイドボードに追加したデッキリストをエクスポートしますか？"):
                         decklist = self.generator.add_diff_to_sideboard(decklist, pool)
                         copy(decklist)
                         print(paste())
                         showinfo(self.APP_NAME, message="デッキリストがクリップボードにコピーされました。")
-                else:
-                    showinfo(self.APP_NAME, message="デッキリストは適正です。")
             else:
                 if askyesno(self.APP_NAME, message="以下のカードが不正です。\n\n"+str(invalid_cards)+"\n\n不正カードを除外したデッキリストをエクスポートしますか？"):
                     decklist = self.generator.strip_invalid_cards_from_decklist(decklist, invalid_cards)

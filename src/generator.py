@@ -195,10 +195,6 @@ class Generator():
                 invalid_cards[deck_key] = decklist_deck[deck_key]
         return invalid_cards
     
-    def correct_decklist():
-        #TODO
-        pass
-
     def sealedable(self, set):
         if self.set_info[set][Rarity.RARE] < N_IN_PACK.RARE:
             return False
@@ -252,21 +248,27 @@ class Generator():
                     elif decklist_cards[decklist_card] < invalid_cards[invalid_card]:
                         invalid_cards[invalid_card] -= decklist_cards[decklist_card]
                         decklist_cards[decklist_card] = 0
-        
+
+        for key in [k for k in decklist_cards.keys() if decklist_cards[k] == 0]:
+            del decklist_cards[key]
+        for key in [k for k in invalid_cards.keys() if invalid_cards[k] == 0]:
+            del invalid_cards[key]
+
         return decklist_cards, invalid_cards
     
     def get_diff_cards(self, pool, decklist):
         pool_cards = self.cards_to_decklist_cards(pool)
         decklist_cards = self.decklist_to_decklist_cards(decklist, name_only=True)
-        diff_cards = self.strip_invalid_cards_from_decklist_cards(pool_cards, decklist_cards)
+        diff_cards, _ = self.strip_invalid_cards_from_decklist_cards(pool_cards, decklist_cards)
         return diff_cards
 
     def add_diff_to_sideboard(self, decklist, pool):
-        adding_cards = self.get_diff_cards(self, pool, decklist)
+        adding_cards = self.get_diff_cards(pool, decklist)
         adding_str = self.decklist_cards_to_decklist(adding_cards, is_sideboard=True)
         if "サイドボード\n" in decklist or "Sideboard\n" in decklist:
-            adding_str.replace("サイドボード\n", "")
-            adding_str.replace("Sideboard\n", "")
+            adding_str = adding_str.replace("サイドボード\n", "").replace("Sideboard\n", "")
+        else:
+            adding_str = "\n"+adding_str
         return decklist + adding_str
     
     @classmethod
