@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from dateutil.tz import gettz
 from hashlib import sha512
+from operator import attrgetter
 import random
 import re
-
 
 class Rarity():
     TOKEN = "Token"
@@ -494,4 +494,13 @@ class Generator():
         rst[Key.DECK] = self.cards_to_decklist_image_array(deck_cards)
         rst[Key.SIDEBOARD] = self.cards_to_decklist_image_array(sideboard_cards)
 
+        for key0 in rst.keys(): # DECK, SIDEBOARD
+            for key1 in rst[key0].keys():   # CREATURE, NONCREATURE, LAND
+                for key2 in rst[key0][key1].keys(): # MV_n, BASIC, NONBASIC
+                    rst[key0][key1][key2].sort(key=attrgetter('cmc', 'set_number', 'set'))
+
         return rst
+
+    def generate_decklist_image_from_array(self, decklist_image_array):
+        #TODO
+        pass

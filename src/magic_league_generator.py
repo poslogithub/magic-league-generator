@@ -49,7 +49,7 @@ class GeneratorApp(Frame):
 
         # GUI
         self.master.title(self.APP_NAME)
-        self.master.geometry("380x260")
+        self.master.geometry("380x300")
         self.master.protocol('WM_DELETE_WINDOW', self.close_window)
         self.master_frame = Frame(self.master)
         self.master_frame.pack()
@@ -103,6 +103,10 @@ class GeneratorApp(Frame):
         self.export_button.grid(row=0, column=0, sticky=W + E, padx=5, pady=5)
         self.validate_button = Button(self.export_frame, text="クリップボードから検証", width=20, command=self.validate)
         self.validate_button.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
+        self.export_deck_image_frame = Frame(self.master)
+        self.export_deck_image_frame.pack()
+        self.export_deck_image_button = Button(self.export_deck_image_frame, text="クリップボードからデッキリスト画像をエクスポート", command=self.export_deck_image)
+        self.export_deck_image_button.grid(row=0, column=0, sticky=W + E, padx=5, pady=5)
         self.update_window()
 
     def close_window(self):
@@ -224,7 +228,14 @@ class GeneratorApp(Frame):
 
         else:
             showwarning(self.APP_NAME, message="クリップボードが空です。")
-        
+    
+    def export_deck_image(self):
+        decklist = paste()
+        decklist_image_array = self.generator.decklist_to_decklist_image_array(decklist)
+        print(decklist_image_array)
+        self.generator.generate_decklist_image_from_array(decklist_image_array)
+        #TODO
+
     def save_config(self):
         self.config[ConfigKey.USER_ID] = self.sv_user_id.get()
         for i in range(len(self.config.get(ConfigKey.SETS))):
