@@ -232,8 +232,9 @@ class GeneratorApp(Frame):
     def export_deck_image(self):
         decklist = paste()
         decklist_image_array = self.generator.decklist_to_decklist_image_array(decklist)
-        print(decklist_image_array)
-        self.generator.generate_decklist_image_from_array(decklist_image_array)
+        # print(decklist_image_array)
+        image = self.generator.generate_decklist_image_from_array(decklist_image_array)
+        image.save("test.png")
         #TODO
 
     def save_config(self):

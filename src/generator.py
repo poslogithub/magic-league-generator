@@ -4,8 +4,12 @@ from dateutil.relativedelta import relativedelta
 from dateutil.tz import gettz
 from hashlib import sha512
 from operator import attrgetter
+from os.path import exists, join
+from PIL import Image
+from mtgsdk import Card
 import random
 import re
+from card_image_downloader import CardImageDownloader
 
 class Rarity():
     TOKEN = "Token"
@@ -42,6 +46,14 @@ class Key():
     MV_4 = "4"
     MV_5 = "5"
     MV_6 = "6-"
+
+class CardImage():
+    WIDTH = 265
+    HEIGHT = 370
+    HEIGHT_MARGIN = 80
+    COLUMN_MARGIN = 26
+    ROW_MARGIN = 37
+    DIRECTORY = "."
 
 
 class Generator():
@@ -429,7 +441,8 @@ class Generator():
                     sideboard += line + "\n"
         return deck, sideboard
 
-    def cards_to_decklist_image_array(self, cards):
+    @classmethod
+    def cards_to_decklist_image_array(cls, cards):
         rst = {
             Key.CREATURE: {
                 Key.MV_1: [],
@@ -501,6 +514,73 @@ class Generator():
 
         return rst
 
-    def generate_decklist_image_from_array(self, decklist_image_array):
-        #TODO
-        pass
+    @classmethod
+    def generate_decklist_image_from_array(cls, decklist_image_array):
+        images = {}
+        for key0 in decklist_image_array.keys(): # DECK, SIDEBOARD
+            for key1 in decklist_image_array[key0].keys():   # CREATURE, NONCREATURE, LAND
+                images[key1] = cls.generate_image_from_array(decklist_image_array[key0][key1], key1 == Key.LAND)
+        image = Image.new('RGBA', (
+            max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN + images[Key.LAND].width, 
+            images[Key.CREATURE].height + CardImage.COLUMN_MARGIN + images[Key.NONCREATURE].height
+        ))
+        image.alpha_composite(images[Key.CREATURE], (0, 0))
+        image.alpha_composite(images[Key.NONCREATURE], (0, images[Key.CREATURE].height + CardImage.COLUMN_MARGIN))
+        image.alpha_composite(images[Key.CREATURE], (max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN, 0))
+        return image
+
+    @classmethod
+    def generate_image_from_array(cls, image_array, is_land=False):
+        if not is_land:
+            n = 0
+            for key in image_array.keys():  #マナコスト
+                n = max(n, len(image_array[key]))
+
+            image = Image.new('RGBA', (
+                (CardImage.WIDTH + CardImage.ROW_MARGIN) * len(image_array.keys()), 
+                CardImage.HEIGHT_MARGIN*(n-1) + CardImage.HEIGHT
+            ))
+
+            x = 0
+            y = 0
+            for key in image_array.keys():
+                for card in image_array[key]:
+                    card_path = join(CardImage.DIRECTORY, card.pretty_name+".png")
+                    if not exists(card_path):
+                        print(card_path + " is not exist")
+                        card_path = CardImageDownloader.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
+                        if not card_path:
+                            card_path = join(CardImage.DIRECTORY, "dummy.png")
+                    else:
+                        print(card_path + " is exist")
+                    with Image.open(card_path) as card_image:
+                        image.alpha_composite(card_image, (x, y))
+                    y += CardImage.HEIGHT_MARGIN
+                x += CardImage.WIDTH + CardImage.COLUMN_MARGIN
+                y = 0
+        else:
+            #TODO
+            n = len(image_array[Key.BASIC]) + len(image_array[Key.NONBASIC])
+
+            image = Image.new('RGBA', (
+                CardImage.WIDTH, 
+                CardImage.HEIGHT_MARGIN*(n-1) + CardImage.HEIGHT
+            ))
+
+            x = 0
+            y = 0
+            for key in image_array.keys():
+                for card in image_array[key]:
+                    card_path = join(CardImage.DIRECTORY, card.pretty_name+".png")
+                    if not exists(card_path):
+                        print(card_path + " is not exist")
+                        card_path = CardImageDownloader.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
+                        if not card_path:
+                            card_path = join(CardImage.DIRECTORY, "dummy.png")
+                    else:
+                        print(card_path + " is exist")
+                    with Image.open(card_path) as card_image:
+                        image.alpha_composite(card_image, (x, y))
+                    y += CardImage.HEIGHT_MARGIN
+    
+        return image
