@@ -6,7 +6,6 @@ from tkinter.messagebox import askyesno, showinfo, showwarning
 from tkinter.ttk import Combobox, Entry, Label
 from generator import Generator, Mode
 from generator_config import GeneratorConfigFile, ConfigKey
-from mtga.set_data import all_mtga_cards
 from pyperclip import copy, paste
 
 class GeneratorApp(Frame):
@@ -27,7 +26,7 @@ class GeneratorApp(Frame):
         self.DT_FORMAT = '%Y-%m-%d %H:%M:%S %z'
 
         # 変数
-        self.generator = Generator(all_mtga_cards)
+        self.generator = Generator()
         self.sets = [""]
         for set in self.generator.get_sets():
             if self.generator.sealedable(set):

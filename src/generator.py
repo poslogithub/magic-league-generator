@@ -6,10 +6,10 @@ from hashlib import sha512
 from operator import attrgetter
 from os.path import exists, join
 from PIL import Image
-from mtgsdk import Card
 import random
 import re
-from card_image_downloader import CardImageDownloader
+from mtga.set_data import all_mtga_cards
+from card_image_downloader import MtgSdk
 
 class Rarity():
     TOKEN = "Token"
@@ -66,7 +66,8 @@ class Generator():
     MYTHIC_RARE_RATE = 1 / 7.4
     BASIC_LANDS = ["平地", "島", "沼", "山", "森", "Plains", "Island", "Swamp", "Mountain", "Forest"]
 
-    def __init__(self, pool):
+    def __init__(self, pool=all_mtga_cards):
+        self.mtgsdk = MtgSdk()
         self.cards = pool.cards
         self.sets = self.get_sets()
         self.set_info = {}
@@ -514,12 +515,13 @@ class Generator():
 
         return rst
 
-    @classmethod
-    def generate_decklist_image_from_array(cls, decklist_image_array):
+    def generate_decklist_image_from_array(self, decklist_image_array):
         images = {}
-        for key0 in decklist_image_array.keys(): # DECK, SIDEBOARD
-            for key1 in decklist_image_array[key0].keys():   # CREATURE, NONCREATURE, LAND
-                images[key1] = cls.generate_image_from_array(decklist_image_array[key0][key1], key1 == Key.LAND)
+        #TODO
+        #for key0 in decklist_image_array.keys(): # DECK, SIDEBOARD
+        key0 = Key.DECK
+        for key1 in decklist_image_array[key0].keys():   # CREATURE, NONCREATURE, LAND
+            images[key1] = self.generate_image_from_array(decklist_image_array[key0][key1], key1 == Key.LAND)
         image = Image.new('RGBA', (
             max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN + images[Key.LAND].width, 
             images[Key.CREATURE].height + CardImage.COLUMN_MARGIN + images[Key.NONCREATURE].height
@@ -529,8 +531,7 @@ class Generator():
         image.alpha_composite(images[Key.CREATURE], (max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN, 0))
         return image
 
-    @classmethod
-    def generate_image_from_array(cls, image_array, is_land=False):
+    def generate_image_from_array(self, image_array, is_land=False):
         if not is_land:
             n = 0
             for key in image_array.keys():  #マナコスト
@@ -548,7 +549,7 @@ class Generator():
                     card_path = join(CardImage.DIRECTORY, card.pretty_name+".png")
                     if not exists(card_path):
                         print(card_path + " is not exist")
-                        card_path = CardImageDownloader.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
+                        card_path = self.mtgsdk.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
                         if not card_path:
                             card_path = join(CardImage.DIRECTORY, "dummy.png")
                     else:
@@ -574,7 +575,7 @@ class Generator():
                     card_path = join(CardImage.DIRECTORY, card.pretty_name+".png")
                     if not exists(card_path):
                         print(card_path + " is not exist")
-                        card_path = CardImageDownloader.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
+                        card_path = self.mtgsdk.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
                         if not card_path:
                             card_path = join(CardImage.DIRECTORY, "dummy.png")
                     else:
@@ -582,5 +583,5 @@ class Generator():
                     with Image.open(card_path) as card_image:
                         image.alpha_composite(card_image, (x, y))
                     y += CardImage.HEIGHT_MARGIN
-    
+            #TODO: 森がpngファイルではなくjpgファイルである
         return image
