@@ -50,9 +50,9 @@ class Key():
 class CardImage():
     WIDTH = 265
     HEIGHT = 370
-    HEIGHT_MARGIN = 80
-    COLUMN_MARGIN = 26
-    ROW_MARGIN = 37
+    HEIGHT_MARGIN = 74
+    COLUMN_MARGIN = 20
+    ROW_MARGIN = 10
     DIRECTORY = "."
 
 
@@ -528,7 +528,7 @@ class Generator():
         ))
         image.alpha_composite(images[Key.CREATURE], (0, 0))
         image.alpha_composite(images[Key.NONCREATURE], (0, images[Key.CREATURE].height + CardImage.COLUMN_MARGIN))
-        image.alpha_composite(images[Key.CREATURE], (max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN, 0))
+        image.alpha_composite(images[Key.LAND], (max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN, 0))
         return image
 
     def generate_image_from_array(self, image_array, is_land=False):
@@ -538,7 +538,7 @@ class Generator():
                 n = max(n, len(image_array[key]))
 
             image = Image.new('RGBA', (
-                (CardImage.WIDTH + CardImage.ROW_MARGIN) * len(image_array.keys()), 
+                CardImage.WIDTH * len(image_array.keys()) + CardImage.ROW_MARGIN * (len(image_array.keys())-1), 
                 CardImage.HEIGHT_MARGIN*(n-1) + CardImage.HEIGHT
             ))
 
@@ -548,16 +548,13 @@ class Generator():
                 for card in image_array[key]:
                     card_path = join(CardImage.DIRECTORY, card.pretty_name+".png")
                     if not exists(card_path):
-                        print(card_path + " is not exist")
                         card_path = self.mtgsdk.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
                         if not card_path:
                             card_path = join(CardImage.DIRECTORY, "dummy.png")
-                    else:
-                        print(card_path + " is exist")
                     with Image.open(card_path) as card_image:
                         image.alpha_composite(card_image, (x, y))
                     y += CardImage.HEIGHT_MARGIN
-                x += CardImage.WIDTH + CardImage.COLUMN_MARGIN
+                x += CardImage.WIDTH + CardImage.ROW_MARGIN
                 y = 0
         else:
             #TODO
@@ -574,12 +571,9 @@ class Generator():
                 for card in image_array[key]:
                     card_path = join(CardImage.DIRECTORY, card.pretty_name+".png")
                     if not exists(card_path):
-                        print(card_path + " is not exist")
                         card_path = self.mtgsdk.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
                         if not card_path:
                             card_path = join(CardImage.DIRECTORY, "dummy.png")
-                    else:
-                        print(card_path + " is exist")
                     with Image.open(card_path) as card_image:
                         image.alpha_composite(card_image, (x, y))
                     y += CardImage.HEIGHT_MARGIN

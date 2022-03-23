@@ -1,7 +1,6 @@
 from datetime import datetime
-from email import generator
-from re import S
 from tkinter import Button, Frame, StringVar, Tk, E, N, W
+from tkinter.filedialog import asksaveasfilename
 from tkinter.messagebox import askyesno, showinfo, showwarning
 from tkinter.ttk import Combobox, Entry, Label
 from generator import Generator, Mode
@@ -233,8 +232,12 @@ class GeneratorApp(Frame):
         decklist_image_array = self.generator.decklist_to_decklist_image_array(decklist)
         # print(decklist_image_array)
         image = self.generator.generate_decklist_image_from_array(decklist_image_array)
-        image.save("test.png")
-        #TODO
+        try:
+            image.save(asksaveasfilename(initialdir=".", initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png"))
+            showinfo(self.APP_NAME, message="デッキリスト画像を保存しました。")
+        except:
+            showwarning(self.APP_NAME, message="デッキリスト画像の保存に失敗しました。")
+        #TODO: クリップボードにコピーするかどうか
 
     def save_config(self):
         self.config[ConfigKey.USER_ID] = self.sv_user_id.get()
