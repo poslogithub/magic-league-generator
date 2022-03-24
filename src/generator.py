@@ -578,7 +578,8 @@ class Generator():
                         current_basic_land_name = card.pretty_name
                     self.composite_card_image(image, card, CardImage.DIRECTORY, (x, y))
                     if key == Key.BASIC:
-                        self.draw_text(image, "x "+str(basic_land_nums.get(card.pretty_name)), (x + CardImage.WIDTH - 26, y + CardImage.HEIGHT_MARGIN/2))
+                        self.draw_translucence_rectangle(image, (round(x+CardImage.WIDTH*3/5), round(y+CardImage.HEIGHT_MARGIN*2/5)), (round(CardImage.WIDTH/3), round(CardImage.HEIGHT_MARGIN/2)), (0, 0, 0, 192))
+                        self.draw_text(image, "x "+str(basic_land_nums.get(card.pretty_name)), (x + CardImage.WIDTH*9/10, y + round(CardImage.HEIGHT_MARGIN*6.5/10)))
                     y += CardImage.HEIGHT_MARGIN
         return image
 
@@ -591,8 +592,16 @@ class Generator():
         with Image.open(card_path) as card_image:
             return image.alpha_composite(card_image, xy)
 
-    def draw_text(self, image, text, xy=(0, 0)):
+    @classmethod
+    def draw_translucence_rectangle(cls, image, xy=(0, 0), size=(0, 0), fill=(0, 0, 0, 0)):
+        rectangle = Image.new('RGBA', size)
+        draw = ImageDraw.Draw(rectangle)
+        draw.rectangle((0, 0) + size, fill)
+        return image.alpha_composite(rectangle, xy)
+
+    @classmethod
+    def draw_text(cls, image, text, xy=(0, 0)):
         draw = ImageDraw.Draw(image)
         font = ImageFont.truetype("arial", 32)
-        draw.text((xy[0]+3, xy[1]+3), text, fill=(0, 0, 0), font=font, anchor='rm')
+#        draw.text((xy[0]+3, xy[1]+3), text, fill=(0, 0, 0), font=font, anchor='rm')
         draw.text(xy, text, fill=(255, 255, 255), font=font, anchor='rm')
