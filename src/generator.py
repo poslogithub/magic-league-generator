@@ -5,7 +5,7 @@ from dateutil.tz import gettz
 from hashlib import sha512
 from operator import attrgetter
 from os.path import exists, join
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import random
 import re
 from mtga.set_data import all_mtga_cards
@@ -546,19 +546,21 @@ class Generator():
             y = 0
             for key in image_array.keys():
                 for card in image_array[key]:
-                    card_path = join(CardImage.DIRECTORY, card.pretty_name+".png")
-                    if not exists(card_path):
-                        card_path = self.mtgsdk.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
-                        if not card_path:
-                            card_path = join(CardImage.DIRECTORY, "dummy.png")
-                    with Image.open(card_path) as card_image:
-                        image.alpha_composite(card_image, (x, y))
+                    self.composite_card_image(image, card, CardImage.DIRECTORY, (x, y))
                     y += CardImage.HEIGHT_MARGIN
                 x += CardImage.WIDTH + CardImage.ROW_MARGIN
                 y = 0
         else:
             #TODO
-            n = len(image_array[Key.BASIC]) + len(image_array[Key.NONBASIC])
+            # 基本土地の種類を数える
+            basic_land_nums = {}
+            for basic_land_card in image_array[Key.BASIC]:
+                if basic_land_card.pretty_name in basic_land_nums.keys():
+                    basic_land_nums[basic_land_card.pretty_name] += 1
+                else:
+                    basic_land_nums[basic_land_card.pretty_name] = 1
+            
+            n = len(basic_land_nums) + len(image_array[Key.NONBASIC])
 
             image = Image.new('RGBA', (
                 CardImage.WIDTH, 
@@ -567,15 +569,30 @@ class Generator():
 
             x = 0
             y = 0
-            for key in image_array.keys():
+            current_basic_land_name = ""
+            for key in image_array.keys():  # BASIC, NONBASIC
                 for card in image_array[key]:
-                    card_path = join(CardImage.DIRECTORY, card.pretty_name+".png")
-                    if not exists(card_path):
-                        card_path = self.mtgsdk.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
-                        if not card_path:
-                            card_path = join(CardImage.DIRECTORY, "dummy.png")
-                    with Image.open(card_path) as card_image:
-                        image.alpha_composite(card_image, (x, y))
+                    if key == Key.BASIC:
+                        if current_basic_land_name == card.pretty_name:
+                            continue
+                        current_basic_land_name = card.pretty_name
+                    self.composite_card_image(image, card, CardImage.DIRECTORY, (x, y))
+                    if key == Key.BASIC:
+                        self.draw_text(image, "x "+str(basic_land_nums.get(card.pretty_name)), (x + CardImage.WIDTH - 26, y + CardImage.HEIGHT_MARGIN/2))
                     y += CardImage.HEIGHT_MARGIN
-            #TODO: 森がpngファイルではなくjpgファイルである
         return image
+
+    def composite_card_image(self, image, card, dir=".", xy=(0, 0)):
+        card_path = join(dir, card.pretty_name+".png")
+        if not exists(card_path):
+            card_path = self.mtgsdk.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
+            if not card_path:
+                card_path = join(dir, "dummy.png")
+        with Image.open(card_path) as card_image:
+            return image.alpha_composite(card_image, xy)
+
+    def draw_text(self, image, text, xy=(0, 0)):
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype("arial", 32)
+        draw.text((xy[0]+3, xy[1]+3), text, fill=(0, 0, 0), font=font, anchor='rm')
+        draw.text(xy, text, fill=(255, 255, 255), font=font, anchor='rm')
