@@ -524,7 +524,7 @@ class Generator():
             images[key1] = self.generate_image_from_array(decklist_image_array[key0][key1], key1 == Key.LAND)
         image = Image.new('RGBA', (
             max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN + images[Key.LAND].width, 
-            images[Key.CREATURE].height + CardImage.COLUMN_MARGIN + images[Key.NONCREATURE].height
+            max(images[Key.CREATURE].height + CardImage.COLUMN_MARGIN + images[Key.NONCREATURE].height, images[Key.LAND].height)
         ))
         image.alpha_composite(images[Key.CREATURE], (0, 0))
         image.alpha_composite(images[Key.NONCREATURE], (0, images[Key.CREATURE].height + CardImage.COLUMN_MARGIN))
@@ -551,8 +551,6 @@ class Generator():
                 x += CardImage.WIDTH + CardImage.ROW_MARGIN
                 y = 0
         else:
-            #TODO
-            # 基本土地の種類を数える
             basic_land_nums = {}
             for basic_land_card in image_array[Key.BASIC]:
                 if basic_land_card.pretty_name in basic_land_nums.keys():
