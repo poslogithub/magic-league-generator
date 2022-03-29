@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 import random
 import re
 from mtga.set_data import all_mtga_cards
-from card_image_downloader import MtgSdk
+from card_image_downloader import CardImageDownloader
 
 class Rarity():
     TOKEN = "Token"
@@ -53,7 +53,7 @@ class CardImage():
     HEIGHT_MARGIN = 74
     COLUMN_MARGIN = 20
     ROW_MARGIN = 10
-    DIRECTORY = "."
+    DIRECTORY = "card_image"
 
 
 class Generator():
@@ -67,7 +67,7 @@ class Generator():
     BASIC_LANDS = ["平地", "島", "沼", "山", "森", "Plains", "Island", "Swamp", "Mountain", "Forest"]
 
     def __init__(self, pool=all_mtga_cards):
-        self.mtgsdk = MtgSdk()
+        self.downloader = CardImageDownloader()
         self.cards = pool.cards
         self.sets = self.get_sets()
         self.set_info = {}
@@ -582,13 +582,24 @@ class Generator():
         return image
 
     def composite_card_image(self, image, card, dir=".", xy=(0, 0)):
-        card_path = join(dir, card.pretty_name+".png")
-        if not exists(card_path):
-            card_path = self.mtgsdk.get_card_image(card.pretty_name, card.set, card.set_number, card_path)
-            if not card_path:
-                card_path = join(dir, "dummy.png")
-        with Image.open(card_path) as card_image:
-            return image.alpha_composite(card_image, xy)
+        card_image_path = join(dir, card.pretty_name+".png")
+        if not exists(card_image_path):
+            print(card.pretty_name+"をダウンロード中...", end='', flush=True)
+            card_image_data = self.downloader.get_image_data(card.set, card.set_number)
+            if card_image_data:
+                with open(card_image_path, 'wb') as card_image_file:
+                    card_image_file.write(card_image_data)
+                print("完了")
+            else:
+                card_image_path = join(dir, "dummy.png")
+                print("失敗")
+        with Image.open(card_image_path) as card_image:
+            if card_image.width != CardImage.WIDTH or card_image.height != CardImage.HEIGHT:
+                card_image = card_image.resize((CardImage.WIDTH, CardImage.HEIGHT))
+            if card_image.format == 'PNG':
+                return image.alpha_composite(card_image, xy)
+            else:
+                return image.paste(card_image, xy)
 
     @classmethod
     def draw_translucence_rectangle(cls, image, xy=(0, 0), size=(0, 0), fill=(0, 0, 0, 0)):
