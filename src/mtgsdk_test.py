@@ -4,7 +4,7 @@ from mtgsdk import Card
 
 CARD_BACK_IMAGE_MD5 = 'db0c48db407a907c16ade38de048a441'
 
-cards = Card.where(set='MID').where(number=268).all()
+cards = Card.where(set='STX').all()
 
 name = None
 image_url = None

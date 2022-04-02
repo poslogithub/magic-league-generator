@@ -6,6 +6,8 @@ from tkinter.ttk import Combobox, Entry, Label
 from generator import Generator, Mode
 from generator_config import GeneratorConfigFile, ConfigKey
 from pyperclip import copy, paste
+from os.path import basename
+from subprocess import Popen
 
 class GeneratorApp(Frame):
     def __init__(self, master=None):
@@ -232,11 +234,16 @@ class GeneratorApp(Frame):
         decklist_image_array = self.generator.decklist_to_decklist_image_array(decklist)
         # print(decklist_image_array)
         image = self.generator.generate_decklist_image_from_array(decklist_image_array)
-        try:
-            image.save(asksaveasfilename(initialdir=".", initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png"))
-            showinfo(self.APP_NAME, message="デッキリスト画像を保存しました。")
-        except:
-            showwarning(self.APP_NAME, message="デッキリスト画像の保存に失敗しました。")
+        image_path = asksaveasfilename(initialdir=".", initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png")
+        if image_path:
+            try:
+                image.save(image_path)
+                showinfo(self.APP_NAME, message="デッキリスト画像を保存しました。")
+                folder_path = image_path.rstrip(basename(image_path))
+                Popen(["explorer", folder_path], shell=True)
+            except:
+                showwarning(self.APP_NAME, message="デッキリスト画像の保存に失敗しました。")
+        
         #TODO: クリップボードにコピーするかどうか
 
     def save_config(self):
