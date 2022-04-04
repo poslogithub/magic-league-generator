@@ -601,7 +601,10 @@ class Generator():
                     with open(card_image_path, 'wb') as card_image_file:
                         card_image_file.write(card_image_data)
             else:
-                card_image_path = join(dir, "dummy.png")
+                #TODO: ダミー画像を灰色（64）の四角とカード名（白文字）に変更
+                card_image_path = join(dir, card.pretty_name+'.png')
+                card_image = self.generate_dummy_card_image(card.pretty_name)
+                card_image.save(card_image_path, 'PNG')
         with Image.open(card_image_path) as card_image:
             if card_image.width != CardImage.WIDTH or card_image.height != CardImage.HEIGHT:
                 card_image = card_image.resize((CardImage.WIDTH, CardImage.HEIGHT))
@@ -616,10 +619,24 @@ class Generator():
         draw = ImageDraw.Draw(rectangle)
         draw.rectangle((0, 0) + size, fill)
         return decklist_image.alpha_composite(rectangle, xy)
+    
+    @classmethod
+    def generate_dummy_card_image(cls, card_name):
+        outer_size = (0, 0, CardImage.WIDTH, CardImage.HEIGHT)
+        inner_size = (11, 11, CardImage.WIDTH-11, CardImage.HEIGHT-11)
+
+        dummy_card_image = Image.new('RGBA', (CardImage.WIDTH, CardImage.HEIGHT))
+        draw = ImageDraw.Draw(dummy_card_image)
+        draw.rectangle(outer_size, (0, 22, 34, 255))
+        draw.rectangle(inner_size, (192, 192, 192, 255))
+        font = ImageFont.truetype('meiryo', 12)
+        draw.text((21, 21), card_name, fill=(0, 0, 0, 255), font=font)
+        return dummy_card_image
+
 
     @classmethod
     def draw_text(cls, image, text, xy=(0, 0)):
         draw = ImageDraw.Draw(image)
-        font = ImageFont.truetype('arial', 32)
+        font = ImageFont.truetype('meiryo', 32)
 #        draw.text((xy[0]+3, xy[1]+3), text, fill=(0, 0, 0), font=font, anchor='rm')
         draw.text(xy, text, fill=(255, 255, 255), font=font, anchor='rm')
