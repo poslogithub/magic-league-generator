@@ -24,14 +24,18 @@ class CardImageDownloader():
 
     def get_card_name_and_image_data(self, set, number, language=None):
         card = self.__get_card(set, number)
-        return self.__get_card_name_and_image_data(card, language if language else self.__language)
+        if card:
+            return self.__get_card_name_and_image_data(card, language if language else self.__language)
+        else:
+            return None, None
     
     def get_card_image_data(self, set, number, language=None):
-        name, image_data = self.get_card_name_and_image_data(set, number, language if language else self.__language)
+        _, image_data = self.get_card_name_and_image_data(set, number, language if language else self.__language)
         return image_data
 
-    def save_set_all_image(self, set, dir='.', language=None):
+    def save_set_all_images(self, set, dir='.', language=None):
         cards = self.__get_set_cards(set)
+        names = []
         for card in cards:
             name = self.__get_card_name(card, language if language else self.__language)
             is_exist = False
@@ -50,14 +54,17 @@ class CardImageDownloader():
                             path = join(dir, sub(r'["*/:<>?\\\|]', '-', name+self.FORMATS[format]))
                             if not exists(path):
                                 image.save(path)
+                                names.append(name)
+        return names
 
     __CARD_BACK_IMAGE_MD5 = 'db0c48db407a907c16ade38de048a441'
     
     def __get_card(self, set, number):
         cards = self.__get_set_cards(set)
-        for card in cards:
-            if card['number'] == str(number):
-                return card
+        if cards:
+            for card in cards:
+                if card.get('number') == str(number):
+                    return card
         return None
 
     def __get_set_cards(self, set):
@@ -70,13 +77,22 @@ class CardImageDownloader():
         if set in set_cards.keys():
             return set_cards[set]
         else:
-            print(set+"セットのカード一覧取得中...", end="", flush=True)
+            print(set+"セットのカード一覧を取得中...", end="", flush=True)
             set_cards[set] = []
             try:
                 cards = Card.where(set=set).all()
                 for card in cards:
                     entry = {}
-                    entry['foreignNames'] = card.foreign_names
+                    if card.foreign_names:
+                        entry['foreignNames'] = []
+                        for foreign_name in card.foreign_names:
+                            entry['foreignNames'].append(
+                                {
+                                    "name": foreign_name.get("name"),
+                                    "imageUrl": foreign_name.get("imageUrl"),
+                                    "language": foreign_name.get("language")
+                                }
+                            )
                     entry['imageUrl'] = card.image_url
                     entry['name'] = card.name
                     entry['number'] = card.number
@@ -94,10 +110,10 @@ class CardImageDownloader():
     def __get_card_name(cls, card, language):
         name = None
         if card:
-            if card['foreignNames']:
+            if card.get('foreignNames'):
                 for foreign_name in card['foreignNames']:
-                    if foreign_name['language'] == language:
-                        name = foreign_name['name']
+                    if foreign_name.get('language') == language:
+                        name = foreign_name.get('name')
                         break
             if name is None:
                 name = card['name']
@@ -108,17 +124,17 @@ class CardImageDownloader():
         name = None
         image_data = None
         if card:
-            if card['foreignNames']:
+            if card.get('foreignNames'):
                 for foreign_name in card['foreignNames']:
-                    if foreign_name['language'] == language:
-                        name = foreign_name['name']
-                        image_url = foreign_name['imageUrl']
+                    if foreign_name.get('language') == language:
+                        name = foreign_name.get('name')
+                        image_url = foreign_name.get('imageUrl')
                         if image_url:
                             image_data = cls.__download_image_data_from_url(image_url, name)
                         break
             if image_data is None:
-                name = card['name']
-                image_url = card['imageUrl']
+                name = card.get('name')
+                image_url = card.get('imageUrl')
                 if image_url:
                     image_data = cls.__download_image_data_from_url(image_url, name)
         return name, image_data

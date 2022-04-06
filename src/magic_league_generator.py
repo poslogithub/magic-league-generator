@@ -1,12 +1,13 @@
+from cmath import pi
 from datetime import datetime
-from tkinter import Button, Frame, StringVar, Tk, E, N, W
-from tkinter.filedialog import asksaveasfilename
+from tkinter import Button, Frame, LabelFrame, StringVar, Tk, E, N, W
+from tkinter.filedialog import askdirectory, asksaveasfilename
 from tkinter.messagebox import askyesno, showinfo, showwarning
 from tkinter.ttk import Combobox, Entry, Label
 from generator import Generator, Mode
 from generator_config import GeneratorConfigFile, ConfigKey
 from pyperclip import copy, paste
-from os.path import sep
+from os.path import dirname, sep
 from subprocess import Popen
 
 class GeneratorApp(Frame):
@@ -46,18 +47,24 @@ class GeneratorApp(Frame):
             self.sv_pack_nums.append(StringVar(value=self.config.get(ConfigKey.PACK_NUMS)[i]))
         self.sv_start_time = StringVar()
         self.sv_end_time = StringVar()
+        self.sv_card_image_cache_folder = StringVar(value=self.config.get(ConfigKey.CARD_IMAGE_CACHE_FOLDER))
 
         # GUI
         self.master.title(self.APP_NAME)
-        self.master.geometry("380x300")
+        self.master.geometry("460x380")
         self.master.protocol('WM_DELETE_WINDOW', self.close_window)
         self.master_frame = Frame(self.master)
         self.master_frame.pack()
-        self.user_id_label = Label(self.master_frame, text="ユーザー名#ID番号: ", anchor="w")
+        ## カードプール生成
+        self.pool_frame = LabelFrame(self.master_frame, text="カードプール生成", width=420)
+        self.pool_frame.pack()
+        self.pool_edit_frame = Frame(self.pool_frame)
+        self.pool_edit_frame.pack()
+        self.user_id_label = Label(self.pool_edit_frame, text="ユーザー名#ID番号: ", anchor="w")
         self.user_id_label.grid(row=0, column=0, sticky=W, padx=5, pady=5)
-        self.user_id_entry = Entry(self.master_frame, textvariable=self.sv_user_id, width=32)
+        self.user_id_entry = Entry(self.pool_edit_frame, textvariable=self.sv_user_id, width=32)
         self.user_id_entry.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
-        self.set_pack_label_frame = Frame(self.master_frame)
+        self.set_pack_label_frame = Frame(self.pool_edit_frame)
         self.set_pack_label_frame.grid(row=1, column=0, sticky=W, padx=0, pady=0)
         self.set_label = Label(self.set_pack_label_frame, text="セット: ", anchor="w")
         self.set_label.grid(row=0, column=0, sticky=W, padx=5, pady=5)
@@ -65,7 +72,7 @@ class GeneratorApp(Frame):
         self.pack_num_label.grid(row=1, column=0, sticky=W + E + N, padx=5, pady=5)
         self.pack_mode_label = Label(self.set_pack_label_frame, text="", anchor="w")
         self.pack_mode_label.grid(row=2, column=0, sticky=W + E + N, padx=5, pady=5)
-        self.sets_packes_frame = Frame(self.master_frame)
+        self.sets_packes_frame = Frame(self.pool_edit_frame)
         self.sets_packes_frame.grid(row=1, column=1, sticky=W + E, padx=0, pady=0)
         self.set_comboboxs = []
         self.pack_num_entries = []
@@ -79,39 +86,57 @@ class GeneratorApp(Frame):
         self.pack_mode_combobox.current(self.PACK_MODES.index(self.sv_pack_mode.get()) if self.sv_pack_mode.get() else 0)
         self.pack_mode_combobox.bind('<<ComboboxSelected>>', self.change_pack_mode)
         self.pack_mode_combobox.grid(row=2, column=0, sticky=W, padx=5, pady=5)
-        self.mode_label = Label(self.master_frame, text="モード: ", anchor="w")
+        self.mode_label = Label(self.pool_edit_frame, text="モード: ", anchor="w")
         self.mode_label.grid(row=3, column=0, sticky=W, padx=5, pady=5)
-        self.mode_combobox = Combobox(self.master_frame, width=6, values=list(self.MODES.values()), textvariable=self.sv_mode, state="readonly")
+        self.mode_combobox = Combobox(self.pool_edit_frame, width=6, values=list(self.MODES.values()), textvariable=self.sv_mode, state="readonly")
         self.mode_combobox.current(self.get_mode_value_index(self.sv_mode.get()) if self.sv_mode.get() else 0)
         self.mode_combobox.bind('<<ComboboxSelected>>', self.change_mode)
         self.mode_combobox.grid(row=3, column=1, sticky=W, padx=5, pady=5)
-        self.start_time_label = Label(self.master_frame, text="基準開始日時: ", anchor="w")
+        self.start_time_label = Label(self.pool_edit_frame, text="基準開始日時: ", anchor="w")
         self.start_time_label.grid(row=4, column=0, sticky=W, padx=5, pady=5)
-        self.start_time_frame = Frame(self.master_frame)
+        self.start_time_frame = Frame(self.pool_edit_frame)
         self.start_time_frame.grid(row=4, column=1, sticky=W + E, padx=0, pady=0)
         self.start_time_entry = Entry(self.start_time_frame, textvariable=self.sv_start_time, width=24)
         self.start_time_entry.grid(row=0, column=0, sticky=W, padx=5, pady=5)
         self.start_time_button = Button(self.start_time_frame, text="現在日時", command=self.set_start_time_now)
         self.start_time_button.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
-        self.end_time_label = Label(self.master_frame, text="基準終了日時: ", anchor="w")
+        self.end_time_label = Label(self.pool_edit_frame, text="基準終了日時: ", anchor="w")
         self.end_time_label.grid(row=5, column=0, sticky=W, padx=5, pady=5)
-        self.end_time_entry = Entry(self.master_frame, textvariable=self.sv_end_time, width=24, state='disabled')
+        self.end_time_entry = Entry(self.pool_edit_frame, textvariable=self.sv_end_time, width=24, state='disabled')
         self.end_time_entry.grid(row=5, column=1, sticky=W, padx=5, pady=5)
-        self.export_frame = Frame(self.master)
+        self.export_frame = Frame(self.pool_frame)
         self.export_frame.pack()
         self.export_button = Button(self.export_frame, text="エクスポート", width=20, command=self.export)
         self.export_button.grid(row=0, column=0, sticky=W + E, padx=5, pady=5)
         self.validate_button = Button(self.export_frame, text="クリップボードから検証", width=20, command=self.validate)
         self.validate_button.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
-        self.export_deck_image_frame = Frame(self.master)
-        self.export_deck_image_frame.pack()
-        self.export_deck_image_button = Button(self.export_deck_image_frame, text="クリップボードからデッキリスト画像をエクスポート", command=self.export_deck_image)
+        ## デッキリスト画像生成
+        self.image_frame = LabelFrame(self.master_frame, text="デッキリスト画像生成", width=420)
+        self.image_frame.pack()
+        self.image_edit_frame = Frame(self.image_frame)
+        self.image_edit_frame.pack()
+        self.card_image_cache_folder_label = Label(self.image_edit_frame, text="カード画像キャッシュフォルダ: ", anchor="w")
+        self.card_image_cache_folder_label.grid(row=0, column=0, sticky=W, padx=5, pady=5)
+        self.card_image_cache_folder_entry = Entry(self.image_edit_frame, textvariable=self.sv_card_image_cache_folder, width=32)
+        self.card_image_cache_folder_entry.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
+        self.card_image_cache_folder_button = Button(self.image_edit_frame, text="　参照　", command=self.ref_card_image_cache_folder)
+        self.card_image_cache_folder_button.grid(row=0, column=2, sticky=W + E, padx=5, pady=5)
+        self.export_image_frame = Frame(self.image_frame)
+        self.export_image_frame.pack()
+        self.export_deck_image_button = Button(self.export_image_frame, text="クリップボードからデッキリスト画像をエクスポート", width=40, command=self.export_deck_image)
         self.export_deck_image_button.grid(row=0, column=0, sticky=W + E, padx=5, pady=5)
+        self.export_deck_image_button = Button(self.export_image_frame, text="セットのカード画像を全てダウンロード", width=40, command=self.download_set_card_images)
+        #self.export_deck_image_button.grid(row=1, column=0, sticky=W + E, padx=5, pady=5)
         self.update_window()
 
     def close_window(self):
         self.save_config()
         self.master.destroy()
+    
+    def ref_card_image_cache_folder(self):
+        path = askdirectory(initialdir=self.sv_card_image_cache_folder.get())
+        if path:
+            self.sv_card_image_cache_folder.set(path)
 
     def set_start_time_now(self):
         self.sv_start_time.set(datetime.now().replace(microsecond=0).astimezone().strftime(self.DT_FORMAT))
@@ -171,17 +196,19 @@ class GeneratorApp(Frame):
         value_list = list(self.MODES.values())
         value_list.index(mode_value)
 
-    def get_pool(self):
-        sets = []
-        pack_nums = []
+    def get_sets(self):
+        sets = {}
+        for i in range(len(self.config.get(ConfigKey.SETS))):
+            if self.sv_sets[i].get():
+                sets[self.sv_sets[i].get()] = int(self.sv_pack_nums[i].get())
+        return sets
+
+    def get_pool(self, sets):
         try:
-            for i in range(len(self.config.get(ConfigKey.SETS))):
-                sets.append(self.sv_sets[i].get())
-                pack_nums.append(int(self.sv_pack_nums[i].get()))
             pool = self.generator.open_boosters(
                 user_id=self.sv_user_id.get(),
-                sets=sets,
-                pack_nums=pack_nums,
+                sets=list(sets.keys()),
+                pack_nums=list(sets.values()),
                 mode=self.get_mode_key(self.sv_mode.get()),
                 index_dt=
                     datetime.strptime(self.sv_start_time.get(), self.DT_FORMAT)
@@ -195,7 +222,8 @@ class GeneratorApp(Frame):
 
     def export(self):
         self.save_config()
-        picked_cards = self.get_pool()
+        sets = self.get_sets()
+        picked_cards = self.get_pool(sets)
         decklist = self.generator.cards_to_decklist(picked_cards)
         copy(decklist)
         print(paste())
@@ -206,7 +234,8 @@ class GeneratorApp(Frame):
         invalid_cards = []
         decklist = paste()
         if decklist:
-            pool = self.get_pool()
+            sets = self.get_sets()
+            pool = self.get_pool(sets)
             invalid_cards = self.generator.validate_decklist(decklist, pool)
             diff_cards = self.generator.get_diff_cards(pool, decklist)
             if not invalid_cards:
@@ -230,21 +259,30 @@ class GeneratorApp(Frame):
             showwarning(self.APP_NAME, message="クリップボードが空です。")
     
     def export_deck_image(self):
+        self.save_config()
         decklist = paste()
-        decklist_image_array = self.generator.decklist_to_decklist_image_array(decklist)
-        # print(decklist_image_array)
-        image = self.generator.generate_decklist_image_from_array(decklist_image_array)
-        image_path = asksaveasfilename(initialdir=".", initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png").replace('/', sep)
-        if image_path:
-            try:
-                image.save(image_path)
-                showinfo(self.APP_NAME, message="デッキリスト画像を保存しました。")
-                Popen(['explorer', '/select,'+image_path])
-            except:
-                showwarning(self.APP_NAME, message="デッキリスト画像の保存に失敗しました。")
-        
-        #TODO: クリップボードにコピーするかどうか
+        if decklist:
+            decklist_image_array = self.generator.decklist_to_decklist_image_array(decklist)
+            image = self.generator.generate_decklist_image_from_array(decklist_image_array, self.config[ConfigKey.CARD_IMAGE_CACHE_FOLDER])
+            image_path = asksaveasfilename(initialdir=self.config[ConfigKey.DECKLIST_IMAGE_OUTPUT_FOLDER], initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png")
+            if image_path:
+                image_path = image_path.replace('/', sep)
+                self.config[ConfigKey.DECKLIST_IMAGE_OUTPUT_FOLDER] = dirname(image_path)
+                try:
+                    image.save(image_path)
+                    showinfo(self.APP_NAME, message="デッキリスト画像を保存しました。")
+                    Popen(['explorer', '/select,'+image_path])
+                except:
+                    showwarning(self.APP_NAME, message="デッキリスト画像の保存に失敗しました。")
 
+    def download_set_card_images(self):
+        self.save_config()
+        sets = self.get_sets()
+        for set in sets.keys():
+            self.generator.save_set_all_images(set, self.config[ConfigKey.CARD_IMAGE_CACHE_FOLDER])
+        showinfo(self.APP_NAME, "ダウンロードが完了しました。")
+
+        pass
     def save_config(self):
         self.config[ConfigKey.USER_ID] = self.sv_user_id.get()
         for i in range(len(self.config.get(ConfigKey.SETS))):
@@ -256,6 +294,7 @@ class GeneratorApp(Frame):
         if self.PACK_MODES.index(self.pack_mode_combobox.get()) == 1:   # パック数指定が手動の場合のみ保存
             for i in range(len(self.config.get(ConfigKey.PACK_NUMS))):
                 self.config[ConfigKey.PACK_NUMS][i] = self.sv_pack_nums[i].get()
+        self.config[ConfigKey.CARD_IMAGE_CACHE_FOLDER] = self.sv_card_image_cache_folder.get()
         self.config_file.save(self.config)
 
     def run(self):

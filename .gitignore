@@ -119,3 +119,5 @@ src/icon.ico
 src/test.py
 *.png
 *.lnk
+*.json
+*.json
