@@ -117,3 +117,7 @@ config/config.json
 src/config/config.json
 src/icon.ico
 src/test.py
+*.png
+*.lnk
+*.json
+*.json

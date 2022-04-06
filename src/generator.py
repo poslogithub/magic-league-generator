@@ -3,9 +3,15 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from dateutil.tz import gettz
 from hashlib import sha512
+from operator import attrgetter
+from os.path import exists, join
+from re import sub
+from PIL import Image, ImageDraw, ImageFont
 import random
 import re
-
+from mtga.set_data import all_mtga_cards
+from card_image_downloader import CardImageDownloader
+from io import BytesIO
 
 class Rarity():
     TOKEN = "Token"
@@ -43,6 +49,12 @@ class Key():
     MV_5 = "5"
     MV_6 = "6-"
 
+class CardImage():
+    WIDTH = 265
+    HEIGHT = 370
+    HEIGHT_MARGIN = 74
+    COLUMN_MARGIN = 20
+    ROW_MARGIN = 10
 
 class Generator():
 
@@ -54,7 +66,8 @@ class Generator():
     MYTHIC_RARE_RATE = 1 / 7.4
     BASIC_LANDS = ["平地", "島", "沼", "山", "森", "Plains", "Island", "Swamp", "Mountain", "Forest"]
 
-    def __init__(self, pool):
+    def __init__(self, pool=all_mtga_cards):
+        self.downloader = CardImageDownloader(language='Japanese', json_dir='set_data')
         self.cards = pool.cards
         self.sets = self.get_sets()
         self.set_info = {}
@@ -429,7 +442,8 @@ class Generator():
                     sideboard += line + "\n"
         return deck, sideboard
 
-    def cards_to_decklist_image_array(self, cards):
+    @classmethod
+    def cards_to_decklist_image_array(cls, cards):
         rst = {
             Key.CREATURE: {
                 Key.MV_1: [],
@@ -474,7 +488,7 @@ class Generator():
                 elif card.cmc >= 6:
                     key2 = Key.MV_6
             else:
-                if card.is_basic:
+                if card.pretty_name in cls.BASIC_LANDS:
                     key2 = Key.BASIC
                 else:
                     key2 = Key.NONBASIC
@@ -494,4 +508,143 @@ class Generator():
         rst[Key.DECK] = self.cards_to_decklist_image_array(deck_cards)
         rst[Key.SIDEBOARD] = self.cards_to_decklist_image_array(sideboard_cards)
 
+        for key0 in rst.keys(): # DECK, SIDEBOARD
+            for key1 in rst[key0].keys():   # CREATURE, NONCREATURE, LAND
+                for key2 in rst[key0][key1].keys(): # MV_n, BASIC, NONBASIC
+                    rst[key0][key1][key2].sort(key=attrgetter('cmc', 'set_number', 'set'))
+
         return rst
+
+    def generate_decklist_image_from_array(self, decklist_image_array, card_image_folder='.'):
+        images = {}
+        #TODO
+        #for key0 in decklist_image_array.keys(): # DECK, SIDEBOARD
+        key0 = Key.DECK
+        for key1 in decklist_image_array[key0].keys():   # CREATURE, NONCREATURE, LAND
+            images[key1] = self.generate_image_from_array(decklist_image_array[key0][key1], key1 == Key.LAND, card_image_folder)
+        image = Image.new('RGBA', (
+            max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN + images[Key.LAND].width, 
+            max(images[Key.CREATURE].height + CardImage.COLUMN_MARGIN + images[Key.NONCREATURE].height, images[Key.LAND].height)
+        ))
+        image.alpha_composite(images[Key.CREATURE], (0, 0))
+        image.alpha_composite(images[Key.NONCREATURE], (0, images[Key.CREATURE].height + CardImage.COLUMN_MARGIN))
+        image.alpha_composite(images[Key.LAND], (max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN, 0))
+        return image
+
+    def generate_image_from_array(self, image_array, is_land=False, card_image_folder='.'):
+        if not is_land:
+            n = 0
+            for key in image_array.keys():  #マナコスト
+                n = max(n, len(image_array[key]))
+
+            decklist_image = Image.new('RGBA', (
+                CardImage.WIDTH * len(image_array.keys()) + CardImage.ROW_MARGIN * (len(image_array.keys())-1), 
+                CardImage.HEIGHT_MARGIN*(n-1) + CardImage.HEIGHT
+            ))
+
+            x = 0
+            y = 0
+            for key in image_array.keys():
+                for card in image_array[key]:
+                    self.composite_card_image(decklist_image, card, card_image_folder, (x, y))
+                    y += CardImage.HEIGHT_MARGIN
+                x += CardImage.WIDTH + CardImage.ROW_MARGIN
+                y = 0
+        else:
+            basic_land_nums = {}
+            for basic_land_card in image_array[Key.BASIC]:
+                if basic_land_card.pretty_name in basic_land_nums.keys():
+                    basic_land_nums[basic_land_card.pretty_name] += 1
+                else:
+                    basic_land_nums[basic_land_card.pretty_name] = 1
+            
+            n = len(basic_land_nums) + len(image_array[Key.NONBASIC])
+
+            decklist_image = Image.new('RGBA', (
+                CardImage.WIDTH, 
+                CardImage.HEIGHT_MARGIN*(n-1) + CardImage.HEIGHT
+            ))
+
+            x = 0
+            y = 0
+            processed_basic_land_names = []
+            for key in image_array.keys():  # BASIC, NONBASIC
+                for card in image_array[key]:
+                    if key == Key.BASIC:
+                        if card.pretty_name in processed_basic_land_names:
+                            continue
+                        processed_basic_land_names.append(card.pretty_name)
+                    self.composite_card_image(decklist_image, card, card_image_folder, (x, y))
+                    if key == Key.BASIC:
+                        self.draw_translucence_rectangle(decklist_image, (round(x+CardImage.WIDTH*3/5), round(y+CardImage.HEIGHT_MARGIN*2/5)), (round(CardImage.WIDTH/3), round(CardImage.HEIGHT_MARGIN/2)), (0, 0, 0, 192))
+                        self.draw_text(decklist_image, 'x '+str(basic_land_nums.get(card.pretty_name)), (x + CardImage.WIDTH*9/10, y + round(CardImage.HEIGHT_MARGIN*6.5/10)))
+                    y += CardImage.HEIGHT_MARGIN
+        return decklist_image
+
+    @classmethod
+    def normalize_card_name(cls, card_name):
+        return sub(r'["*/:<>?\\\|]', '-', card_name)
+
+    def composite_card_image(self, decklist_image, card, dir='.', xy=(0, 0)):
+        is_exist = False
+        card_name = self.normalize_card_name(card.pretty_name)
+        for ext in self.downloader.FORMATS.values():
+            card_image_path = join(dir, card_name + ext)
+            if exists(card_image_path):
+                is_exist = True
+                break
+        if not is_exist:
+            card_image_data = self.downloader.get_card_image_data(card.set, card.set_number)
+            if card_image_data:
+                with Image.open(BytesIO(card_image_data)) as card_image:
+                    format = card_image.format
+                    if self.downloader.FORMATS.get(card_image.format):
+                        card_image_path = join(dir, card_name + self.downloader.FORMATS[format])
+                    else:
+                        card_image_path = join(dir, card_name)
+                    with open(card_image_path, 'wb') as card_image_file:
+                        card_image_file.write(card_image_data)
+            else:
+                #TODO: ダミー画像を灰色（64）の四角とカード名（白文字）に変更
+                card_image_path = join(dir, card_name+'.png')
+                card_image = self.generate_dummy_card_image(card.pretty_name)
+                card_image.save(card_image_path, 'PNG')
+        with Image.open(card_image_path) as card_image:
+            if card_image.width != CardImage.WIDTH or card_image.height != CardImage.HEIGHT:
+                card_image = card_image.resize((CardImage.WIDTH, CardImage.HEIGHT))
+            if card_image.format == 'PNG':
+                return decklist_image.alpha_composite(card_image, xy)
+            else:
+                return decklist_image.paste(card_image, xy)
+
+    def save_set_all_images(self, set, card_image_cache_folder):
+        names = self.downloader.save_set_all_images(set, card_image_cache_folder)
+        return names
+
+    @classmethod
+    def draw_translucence_rectangle(cls, decklist_image, xy=(0, 0), size=(0, 0), fill=(0, 0, 0, 0)):
+        rectangle = Image.new('RGBA', size)
+        draw = ImageDraw.Draw(rectangle)
+        draw.rectangle((0, 0) + size, fill)
+        return decklist_image.alpha_composite(rectangle, xy)
+    
+    @classmethod
+    def generate_dummy_card_image(cls, card_name):
+        outer_size = (0, 0, CardImage.WIDTH, CardImage.HEIGHT)
+        inner_size = (11, 11, CardImage.WIDTH-11, CardImage.HEIGHT-11)
+
+        dummy_card_image = Image.new('RGBA', (CardImage.WIDTH, CardImage.HEIGHT))
+        draw = ImageDraw.Draw(dummy_card_image)
+        draw.rectangle(outer_size, (0, 22, 34, 255))
+        draw.rectangle(inner_size, (192, 192, 192, 255))
+        font = ImageFont.truetype('meiryo', 12)
+        draw.text((21, 21), card_name, fill=(0, 0, 0, 255), font=font)
+        return dummy_card_image
+
+
+    @classmethod
+    def draw_text(cls, image, text, xy=(0, 0)):
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype('meiryo', 32)
+#        draw.text((xy[0]+3, xy[1]+3), text, fill=(0, 0, 0), font=font, anchor='rm')
+        draw.text(xy, text, fill=(255, 255, 255), font=font, anchor='rm')
