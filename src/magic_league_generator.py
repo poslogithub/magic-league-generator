@@ -56,8 +56,9 @@ class GeneratorApp(Frame):
         self.master_frame = Frame(self.master)
         self.master_frame.pack()
         ## カードプール生成
-        self.pool_frame = LabelFrame(self.master_frame, text="カードプール生成", width=420)
+        self.pool_frame = LabelFrame(self.master_frame, text="カードプール生成", width=440, height=280)
         self.pool_frame.pack()
+        self.pool_frame.propagate(False)
         self.pool_edit_frame = Frame(self.pool_frame)
         self.pool_edit_frame.pack()
         self.user_id_label = Label(self.pool_edit_frame, text="ユーザー名#ID番号: ", anchor="w")
@@ -111,8 +112,9 @@ class GeneratorApp(Frame):
         self.validate_button = Button(self.export_frame, text="クリップボードから検証", width=20, command=self.validate)
         self.validate_button.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
         ## デッキリスト画像生成
-        self.image_frame = LabelFrame(self.master_frame, text="デッキリスト画像生成", width=420)
+        self.image_frame = LabelFrame(self.master_frame, text="デッキリスト画像生成", width=440, height=90)
         self.image_frame.pack()
+        self.image_frame.propagate(False)
         self.image_edit_frame = Frame(self.image_frame)
         self.image_edit_frame.pack()
         self.card_image_cache_folder_label = Label(self.image_edit_frame, text="カード画像キャッシュフォルダ: ", anchor="w")
