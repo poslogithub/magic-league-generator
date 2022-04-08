@@ -28,14 +28,14 @@ class GeneratorApp(Frame):
         self.DT_FORMAT = '%Y-%m-%d %H:%M:%S %z'
 
         # 変数
-        self.generator = Generator()
+        self.config_file = GeneratorConfigFile(self.CONFIG_PATH)
+        self.config = self.config_file.load()
+        self.generator = Generator(card_image_cache_dir=self.config.get(ConfigKey.CARD_IMAGE_CACHE_DIR))
         self.sets = [""]
         for set in self.generator.get_sets():
             if self.generator.sealedable(set):
                 self.sets.append(set)
         self.sets.sort()
-        self.config_file = GeneratorConfigFile(self.CONFIG_PATH)
-        self.config = self.config_file.load()
         self.sv_user_id = StringVar(value=self.config.get(ConfigKey.USER_ID))
         self.sv_sets = []
         for i in range(len(self.config.get(ConfigKey.SETS))):
@@ -47,7 +47,7 @@ class GeneratorApp(Frame):
             self.sv_pack_nums.append(StringVar(value=self.config.get(ConfigKey.PACK_NUMS)[i]))
         self.sv_start_time = StringVar()
         self.sv_end_time = StringVar()
-        self.sv_card_image_cache_folder = StringVar(value=self.config.get(ConfigKey.CARD_IMAGE_CACHE_FOLDER))
+        self.sv_card_image_cache_dir = StringVar(value=self.config.get(ConfigKey.CARD_IMAGE_CACHE_DIR))
 
         # GUI
         self.master.title(self.APP_NAME)
@@ -56,8 +56,9 @@ class GeneratorApp(Frame):
         self.master_frame = Frame(self.master)
         self.master_frame.pack()
         ## カードプール生成
-        self.pool_frame = LabelFrame(self.master_frame, text="カードプール生成", width=420)
+        self.pool_frame = LabelFrame(self.master_frame, text="カードプール生成", width=440, height=280)
         self.pool_frame.pack()
+        self.pool_frame.propagate(False)
         self.pool_edit_frame = Frame(self.pool_frame)
         self.pool_edit_frame.pack()
         self.user_id_label = Label(self.pool_edit_frame, text="ユーザー名#ID番号: ", anchor="w")
@@ -111,16 +112,17 @@ class GeneratorApp(Frame):
         self.validate_button = Button(self.export_frame, text="クリップボードから検証", width=20, command=self.validate)
         self.validate_button.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
         ## デッキリスト画像生成
-        self.image_frame = LabelFrame(self.master_frame, text="デッキリスト画像生成", width=420)
+        self.image_frame = LabelFrame(self.master_frame, text="デッキリスト画像生成", width=440, height=90)
         self.image_frame.pack()
+        self.image_frame.propagate(False)
         self.image_edit_frame = Frame(self.image_frame)
         self.image_edit_frame.pack()
-        self.card_image_cache_folder_label = Label(self.image_edit_frame, text="カード画像キャッシュフォルダ: ", anchor="w")
-        self.card_image_cache_folder_label.grid(row=0, column=0, sticky=W, padx=5, pady=5)
-        self.card_image_cache_folder_entry = Entry(self.image_edit_frame, textvariable=self.sv_card_image_cache_folder, width=32)
-        self.card_image_cache_folder_entry.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
-        self.card_image_cache_folder_button = Button(self.image_edit_frame, text="　参照　", command=self.ref_card_image_cache_folder)
-        self.card_image_cache_folder_button.grid(row=0, column=2, sticky=W + E, padx=5, pady=5)
+        self.card_image_cache_dir_label = Label(self.image_edit_frame, text="カード画像キャッシュフォルダ: ", anchor="w")
+        self.card_image_cache_dir_label.grid(row=0, column=0, sticky=W, padx=5, pady=5)
+        self.card_image_cache_dir_entry = Entry(self.image_edit_frame, textvariable=self.sv_card_image_cache_dir, width=32)
+        self.card_image_cache_dir_entry.grid(row=0, column=1, sticky=W + E, padx=5, pady=5)
+        self.card_image_cache_dir_button = Button(self.image_edit_frame, text="　参照　", command=self.ref_card_image_cache_dir)
+        self.card_image_cache_dir_button.grid(row=0, column=2, sticky=W + E, padx=5, pady=5)
         self.export_image_frame = Frame(self.image_frame)
         self.export_image_frame.pack()
         self.export_deck_image_button = Button(self.export_image_frame, text="クリップボードからデッキリスト画像をエクスポート", width=40, command=self.export_deck_image)
@@ -133,10 +135,10 @@ class GeneratorApp(Frame):
         self.save_config()
         self.master.destroy()
     
-    def ref_card_image_cache_folder(self):
-        path = askdirectory(initialdir=self.sv_card_image_cache_folder.get())
+    def ref_card_image_cache_dir(self):
+        path = askdirectory(initialdir=self.sv_card_image_cache_dir.get())
         if path:
-            self.sv_card_image_cache_folder.set(path)
+            self.sv_card_image_cache_dir.set(path)
 
     def set_start_time_now(self):
         self.sv_start_time.set(datetime.now().replace(microsecond=0).astimezone().strftime(self.DT_FORMAT))
@@ -262,24 +264,24 @@ class GeneratorApp(Frame):
         self.save_config()
         decklist = paste()
         if decklist:
-            decklist_image_array = self.generator.decklist_to_decklist_image_array(decklist)
-            image = self.generator.generate_decklist_image_from_array(decklist_image_array, self.config[ConfigKey.CARD_IMAGE_CACHE_FOLDER])
-            image_path = asksaveasfilename(initialdir=self.config[ConfigKey.DECKLIST_IMAGE_OUTPUT_FOLDER], initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png")
+            image = self.generator.generate_decklist_image_from_decklist(decklist)
+            image_path = asksaveasfilename(initialdir=self.config[ConfigKey.DECKLIST_IMAGE_OUTPUT_DIR], initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png")
             if image_path:
                 image_path = image_path.replace('/', sep)
-                self.config[ConfigKey.DECKLIST_IMAGE_OUTPUT_FOLDER] = dirname(image_path)
+                self.config[ConfigKey.DECKLIST_IMAGE_OUTPUT_DIR] = dirname(image_path)
                 try:
                     image.save(image_path)
-                    showinfo(self.APP_NAME, message="デッキリスト画像を保存しました。")
-                    Popen(['explorer', '/select,'+image_path])
-                except:
+                    if askyesno(self.APP_NAME, message="デッキリスト画像を保存しました。\n保存先フォルダを開きますか？"):
+                        Popen(['explorer', '/select,'+image_path])
+                except Exception as e:
                     showwarning(self.APP_NAME, message="デッキリスト画像の保存に失敗しました。")
+                    print(e.args, flush=True)
 
     def download_set_card_images(self):
         self.save_config()
         sets = self.get_sets()
         for set in sets.keys():
-            self.generator.save_set_all_images(set, self.config[ConfigKey.CARD_IMAGE_CACHE_FOLDER])
+            self.generator.save_set_all_images(set)
         showinfo(self.APP_NAME, "ダウンロードが完了しました。")
 
         pass
@@ -294,7 +296,7 @@ class GeneratorApp(Frame):
         if self.PACK_MODES.index(self.pack_mode_combobox.get()) == 1:   # パック数指定が手動の場合のみ保存
             for i in range(len(self.config.get(ConfigKey.PACK_NUMS))):
                 self.config[ConfigKey.PACK_NUMS][i] = self.sv_pack_nums[i].get()
-        self.config[ConfigKey.CARD_IMAGE_CACHE_FOLDER] = self.sv_card_image_cache_folder.get()
+        self.config[ConfigKey.CARD_IMAGE_CACHE_DIR] = self.sv_card_image_cache_dir.get()
         self.config_file.save(self.config)
 
     def run(self):

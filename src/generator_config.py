@@ -8,8 +8,8 @@ class ConfigKey():
     INDEX_TIME = "indexTime"
     PACK_MODE = "packMode"
     PACK_NUMS = "packNums"
-    CARD_IMAGE_CACHE_FOLDER = "cardImageCacheFolder"
-    DECKLIST_IMAGE_OUTPUT_FOLDER = "decklistImageOutputFolder"
+    CARD_IMAGE_CACHE_DIR = "cardImageCacheDir"
+    DECKLIST_IMAGE_OUTPUT_DIR = "decklistImageOutputDir"
 
 class GeneratorConfigFile(ConfigFile):
     def __init__(self, path=None):
@@ -21,6 +21,6 @@ class GeneratorConfigFile(ConfigFile):
             ConfigKey.INDEX_TIME: "",
             ConfigKey.PACK_MODE: 0, # 0:自動, 1:手動
             ConfigKey.PACK_NUMS: [ 6, 0, 0 ],
-            ConfigKey.CARD_IMAGE_CACHE_FOLDER: "card_image",
-            ConfigKey.DECKLIST_IMAGE_OUTPUT_FOLDER: "."
+            ConfigKey.CARD_IMAGE_CACHE_DIR: "card_image",
+            ConfigKey.DECKLIST_IMAGE_OUTPUT_DIR: "."
         }
