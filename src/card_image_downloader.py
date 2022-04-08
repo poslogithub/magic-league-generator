@@ -1,3 +1,4 @@
+from urllib.error import URLError
 from mtgsdk import Card
 from os.path import exists, join
 import json
@@ -9,13 +10,13 @@ from io import BytesIO
 
 class CardImageDownloader():
     FORMATS = {
+        'PNG': '.png',
+        'JPEG': '.jpg',
+        'GIF': '.gif',
         'BMP': '.bmp',
         'DIB': '.dib',
-        'GIF': '.gif',
         'TIFF': '.tiff',
-        'JPEG': '.jpg',
-        'PPM': '.ppm',
-        'PNG': '.png'
+        'PPM': '.ppm'
     }
 
     def __init__(self, language='Japanese', json_dir='.'):
@@ -34,7 +35,7 @@ class CardImageDownloader():
         return image_data
 
     def save_set_all_images(self, set, dir='.', language=None):
-        cards = self.__get_set_cards(set)
+        cards = self.get_set_cards(set)
         names = []
         for card in cards:
             name = self.__get_card_name(card, language if language else self.__language)
@@ -60,14 +61,14 @@ class CardImageDownloader():
     __CARD_BACK_IMAGE_MD5 = 'db0c48db407a907c16ade38de048a441'
     
     def __get_card(self, set, number):
-        cards = self.__get_set_cards(set)
+        cards = self.get_set_cards(set)
         if cards:
             for card in cards:
                 if card.get('number') == str(number):
                     return card
         return None
 
-    def __get_set_cards(self, set):
+    def get_set_cards(self, set):
         json_path = join(self.__json_dir, set+'.json')
         if exists(json_path):
             with open(json_path) as f:
@@ -77,7 +78,6 @@ class CardImageDownloader():
         if set in set_cards.keys():
             return set_cards[set]
         else:
-            print(set+"セットのカード一覧を取得中...", end="", flush=True)
             set_cards[set] = []
             try:
                 cards = Card.where(set=set).all()
@@ -99,11 +99,11 @@ class CardImageDownloader():
                     set_cards[set].append(entry)
                 with open(json_path, 'w') as f:
                     f.write(json.dumps(set_cards))
-                print("成功")
+                print("セット"+set+"カード一覧の取得に成功", flush=True)
                 return set_cards[set]
             except Exception as e:
-                print("失敗")
-                print(e.args)
+                print("セット"+set+"カード一覧の取得に失敗", flush=True)
+                print(e.args, flush=True)
                 return None
     
     @classmethod
@@ -141,17 +141,28 @@ class CardImageDownloader():
 
     @classmethod
     def __download_image_data_from_url(cls, image_url, name=None):
-        if name:
-            print(name+"をダウンロード中...", end="", flush=True)
-        with urlopen(url=image_url) as response:
-            image_data = response.read()
-            if md5(image_data).hexdigest() == cls.__CARD_BACK_IMAGE_MD5:
-                image_data = None
-        if name:
-            if image_data:
-                print("成功")
+        try:
+            with urlopen(url=image_url) as response:
+                image_data = response.read()
+        except URLError as e:
+            image_data = None
+        except ConnectionError as e:
+            image_data = None
+
+        if image_data and md5(image_data).hexdigest() == cls.__CARD_BACK_IMAGE_MD5:
+            image_data = None
+
+        if image_data:
+            if name:
+                print(name+"のダウンロードに成功", flush=True)
             else:
-                print("失敗")
+                print(image_url+"のダウンロードに成功", flush=True)
+        else:
+            if name:
+                print(name+"のダウンロードに失敗", flush=True)
+            else:
+                print(image_url+"のダウンロードに失敗", flush=True)
+        
         return image_data
 
 if __name__ == "__main__":

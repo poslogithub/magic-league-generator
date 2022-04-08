@@ -6,6 +6,7 @@ from hashlib import sha512
 from operator import attrgetter
 from os.path import exists, join
 from re import sub
+from threading import Thread
 from PIL import Image, ImageDraw, ImageFont
 import random
 import re
@@ -66,7 +67,7 @@ class Generator():
     MYTHIC_RARE_RATE = 1 / 7.4
     BASIC_LANDS = ["平地", "島", "沼", "山", "森", "Plains", "Island", "Swamp", "Mountain", "Forest"]
 
-    def __init__(self, pool=all_mtga_cards):
+    def __init__(self, pool=all_mtga_cards, card_image_cache_dir='.'):
         self.downloader = CardImageDownloader(language='Japanese', json_dir='set_data')
         self.cards = pool.cards
         self.sets = self.get_sets()
@@ -83,6 +84,7 @@ class Generator():
             self.set_info[set][Rarity.COMMON] = len(cards)
             cards = self.get_cards(set=set, rarity=Rarity.BASIC)
             self.set_info[set][Rarity.BASIC] = len(cards)
+        self.card_image_cache_dir = card_image_cache_dir
     
     def add_card(self, set, rarity, picked_cards):
         cards = self.get_cards(set=set, rarity=rarity)
@@ -289,7 +291,7 @@ class Generator():
         decklist_cards = {}
         decklist_lines = decklist.splitlines()
         for line in decklist_lines:
-            if re.match(r'^[0-9]', line):
+            if re.match(r'^[1-9]', line):
                 num = int(line.split()[0])
                 if name_only:
                     decklist_card_str = " ".join(line.split()[1:-2])
@@ -300,6 +302,54 @@ class Generator():
                 else:
                     decklist_cards[decklist_card_str] = num
         return decklist_cards
+    
+    @classmethod
+    def parse_decklist(cls, decklist):  # rst[カード名] = [セット略号, コレクター番号]
+        rst = {}
+        decklist_lines = decklist.splitlines()
+        for line in decklist_lines:
+            if re.match(r'^[1-9]', line):
+                splited_line = line.split()
+                name = " ".join(splited_line[1:-2])
+                if name not in rst.keys():
+                    set = splited_line[-2].strip("()")
+                    number = int(splited_line[-1])
+                    rst[name] = [set, number]
+        return rst
+
+    def download_decklist_card_image(self, decklist):
+        # デッキリストをパース
+        parsed_decklist = self.parse_decklist(decklist)
+
+        # パースしたデッキリストからセット一覧を取得
+        sets = []
+        for key in parsed_decklist.keys():
+            set = parsed_decklist[key][0]
+            if set not in sets:
+                sets.append(set)
+
+        # セット毎にカード画像を並列で取得
+        print("カード画像の取得を開始")
+        threads = []
+        for set in sets:
+            threads.append(Thread(target=self.download_set_card_image_from_parsed_decklist, args=(parsed_decklist, set)))
+            threads[-1].start()
+        for thread in threads:
+            thread.join()
+        print("カード画像の取得が完了")
+    
+    def download_set_card_image_from_parsed_decklist(self, parsed_decklist, set):
+        # セットのカード一覧を取得
+        self.downloader.get_set_cards(set)
+
+        # パースしたデッキリストの各カードについて、対象セットのカード画像を並列ダウンロード
+        threads = []
+        for key in parsed_decklist.keys():
+            if parsed_decklist[key][0] == set:
+                threads.append(Thread(target=self.get_card_image_path, args=(key, set, parsed_decklist[key][1])))
+                threads[-1].start()
+        for thread in threads:
+            thread.join()
 
     @classmethod
     def get_pack_num(cls, mode):
@@ -515,13 +565,20 @@ class Generator():
 
         return rst
 
-    def generate_decklist_image_from_array(self, decklist_image_array, card_image_folder='.'):
+    def generate_decklist_image_from_decklist(self, decklist):
+        self.download_decklist_card_image(decklist)
+        decklist_image_array = self.decklist_to_decklist_image_array(decklist)
+        image = self.generate_decklist_image_from_array(decklist_image_array)
+        return image
+
+
+    def generate_decklist_image_from_array(self, decklist_image_array):
         images = {}
         #TODO
         #for key0 in decklist_image_array.keys(): # DECK, SIDEBOARD
         key0 = Key.DECK
         for key1 in decklist_image_array[key0].keys():   # CREATURE, NONCREATURE, LAND
-            images[key1] = self.generate_image_from_array(decklist_image_array[key0][key1], key1 == Key.LAND, card_image_folder)
+            images[key1] = self.generate_image_from_array(decklist_image_array[key0][key1], key1 == Key.LAND)
         image = Image.new('RGBA', (
             max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN + images[Key.LAND].width, 
             max(images[Key.CREATURE].height + CardImage.COLUMN_MARGIN + images[Key.NONCREATURE].height, images[Key.LAND].height)
@@ -531,7 +588,7 @@ class Generator():
         image.alpha_composite(images[Key.LAND], (max(images[Key.CREATURE].width, images[Key.NONCREATURE].width) + CardImage.ROW_MARGIN, 0))
         return image
 
-    def generate_image_from_array(self, image_array, is_land=False, card_image_folder='.'):
+    def generate_image_from_array(self, image_array, is_land=False):
         if not is_land:
             n = 0
             for key in image_array.keys():  #マナコスト
@@ -546,7 +603,7 @@ class Generator():
             y = 0
             for key in image_array.keys():
                 for card in image_array[key]:
-                    self.composite_card_image(decklist_image, card, card_image_folder, (x, y))
+                    self.composite_card_image(decklist_image, card, (x, y))
                     y += CardImage.HEIGHT_MARGIN
                 x += CardImage.WIDTH + CardImage.ROW_MARGIN
                 y = 0
@@ -574,7 +631,7 @@ class Generator():
                         if card.pretty_name in processed_basic_land_names:
                             continue
                         processed_basic_land_names.append(card.pretty_name)
-                    self.composite_card_image(decklist_image, card, card_image_folder, (x, y))
+                    self.composite_card_image(decklist_image, card, (x, y))
                     if key == Key.BASIC:
                         self.draw_translucence_rectangle(decklist_image, (round(x+CardImage.WIDTH*3/5), round(y+CardImage.HEIGHT_MARGIN*2/5)), (round(CardImage.WIDTH/3), round(CardImage.HEIGHT_MARGIN/2)), (0, 0, 0, 192))
                         self.draw_text(decklist_image, 'x '+str(basic_land_nums.get(card.pretty_name)), (x + CardImage.WIDTH*9/10, y + round(CardImage.HEIGHT_MARGIN*6.5/10)))
@@ -585,40 +642,52 @@ class Generator():
     def normalize_card_name(cls, card_name):
         return sub(r'["*/:<>?\\\|]', '-', card_name)
 
-    def composite_card_image(self, decklist_image, card, dir='.', xy=(0, 0)):
-        is_exist = False
-        card_name = self.normalize_card_name(card.pretty_name)
-        for ext in self.downloader.FORMATS.values():
-            card_image_path = join(dir, card_name + ext)
-            if exists(card_image_path):
-                is_exist = True
-                break
-        if not is_exist:
-            card_image_data = self.downloader.get_card_image_data(card.set, card.set_number)
-            if card_image_data:
-                with Image.open(BytesIO(card_image_data)) as card_image:
-                    format = card_image.format
-                    if self.downloader.FORMATS.get(card_image.format):
-                        card_image_path = join(dir, card_name + self.downloader.FORMATS[format])
-                    else:
-                        card_image_path = join(dir, card_name)
-                    with open(card_image_path, 'wb') as card_image_file:
-                        card_image_file.write(card_image_data)
-            else:
-                #TODO: ダミー画像を灰色（64）の四角とカード名（白文字）に変更
-                card_image_path = join(dir, card_name+'.png')
-                card_image = self.generate_dummy_card_image(card.pretty_name)
-                card_image.save(card_image_path, 'PNG')
-        with Image.open(card_image_path) as card_image:
-            if card_image.width != CardImage.WIDTH or card_image.height != CardImage.HEIGHT:
-                card_image = card_image.resize((CardImage.WIDTH, CardImage.HEIGHT))
-            if card_image.format == 'PNG':
-                return decklist_image.alpha_composite(card_image, xy)
-            else:
-                return decklist_image.paste(card_image, xy)
+    def get_card_image_path(self, name, set, number, ):
+        # カード名の標準化
+        name = self.normalize_card_name(name)
 
-    def save_set_all_images(self, set, card_image_cache_folder):
-        names = self.downloader.save_set_all_images(set, card_image_cache_folder)
+        # カード名.拡張子ファイルが存在する場合、そのパスを返す
+        for ext in self.downloader.FORMATS.values():
+            card_image_path = join(self.card_image_cache_dir, name + ext)
+            if exists(card_image_path):
+                return card_image_path
+
+        # カード名.拡張子ファイルが存在しない場合、CardImageDownloaderでカード画像をダウンロードする
+        card_image_data = self.downloader.get_card_image_data(set, number)
+        if card_image_data:
+            with Image.open(BytesIO(card_image_data)) as card_image:
+                format = card_image.format
+            if self.downloader.FORMATS.get(format):
+                card_image_path = join(self.card_image_cache_dir, name + self.downloader.FORMATS[format])
+            else:
+                card_image_path = join(self.card_image_cache_dir, name)
+            with open(card_image_path, 'wb') as card_image_file:
+                card_image_file.write(card_image_data)
+            return card_image_path
+        
+        # カード画像がダウンロードできなかった場合、Noneを返す
+        return None
+
+    def composite_card_image(self, decklist_image, card, xy=(0, 0)):
+        # カード画像ファイルが存在すれば、そのカード画像を合成する
+        card_image_path = self.get_card_image_path(card.pretty_name, card.set, card.set_number)
+        if card_image_path:
+            with Image.open(card_image_path) as card_image:
+                if card_image.width != CardImage.WIDTH or card_image.height != CardImage.HEIGHT:
+                    # 必要に応じてリサイズ
+                    card_image = card_image.resize((CardImage.WIDTH, CardImage.HEIGHT))
+                if card_image.format == 'PNG':
+                    return decklist_image.alpha_composite(card_image, xy)
+                else:
+                    # PNGでなければ貼り付け
+                    return decklist_image.paste(card_image, xy)
+        else:
+            # カード画像ファイルが存在しなければダミー画像を合成する
+            card_image = self.generate_dummy_card_image(card.pretty_name)
+            return decklist_image.alpha_composite(card_image, xy)
+
+    def save_set_all_images(self, set):
+        names = self.downloader.save_set_all_images(set, self.card_image_cache_dir)
         return names
 
     @classmethod
