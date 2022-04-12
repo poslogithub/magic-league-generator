@@ -66,6 +66,7 @@ class Generator():
 
     MYTHIC_RARE_RATE = 1 / 7.4
     BASIC_LANDS = ["平地", "島", "沼", "山", "森", "Plains", "Island", "Swamp", "Mountain", "Forest"]
+    ALCHEMY_PREFIX = "A-"
 
     def __init__(self, pool=all_mtga_cards, card_image_cache_dir='.'):
         self.downloader = CardImageDownloader(language='Japanese', json_dir='set_data')
@@ -231,7 +232,13 @@ class Generator():
                 name = " ".join(key.split()[0:-2])
                 set = key.split()[-2].strip("()")
                 set_number = int(key.split()[-1])
-            cards = self.get_cards(pretty_name=name, set=set, set_number=set_number)
+            if name.startswith(self.ALCHEMY_PREFIX):
+                pretty_name = sub("^"+self.ALCHEMY_PREFIX, "", name)
+                is_rebalanced = True
+            else:
+                pretty_name = name
+                is_rebalanced = False
+            cards = self.get_cards(pretty_name=pretty_name, set=set, set_number=set_number, is_rebalanced=is_rebalanced)
             if cards:
                 for _ in range(n):
                     rst.append(cards[-1])
@@ -346,7 +353,12 @@ class Generator():
         threads = []
         for key in parsed_decklist.keys():
             if parsed_decklist[key][0] == set:
-                threads.append(Thread(target=self.get_card_image_path, args=(key, set, parsed_decklist[key][1])))
+                name = key
+                number = parsed_decklist[key][1]
+                if name.startswith(self.ALCHEMY_PREFIX):   # アルケミー対応
+                    #name = sub("^"+self.ALCHEMY_PREFIX, "", name, 1)
+                    number = self.ALCHEMY_PREFIX+str(number)
+                threads.append(Thread(target=self.get_card_image_path, args=(name, set, number)))
                 threads[-1].start()
         for thread in threads:
             thread.join()
@@ -440,10 +452,11 @@ class Generator():
     def cards_to_decklist_cards(cls, cards, name_only=False):
         decklist_cards = {}
         for card in cards:
+            pretty_name = cls.ALCHEMY_PREFIX+card.pretty_name if card.is_rebalanced else card.pretty_name
             if name_only:
-                decklist_card_str = card.pretty_name
+                decklist_card_str = pretty_name
             else:
-                decklist_card_str = card.pretty_name + " (" + card.set + ") " + str(card.set_number)
+                decklist_card_str = pretty_name + " (" + card.set + ") " + str(card.set_number)
             if decklist_card_str not in decklist_cards:
                 decklist_cards[decklist_card_str] = 1
             else:
@@ -642,7 +655,7 @@ class Generator():
     def normalize_card_name(cls, card_name):
         return sub(r'["*/:<>?\\\|]', '-', card_name)
 
-    def get_card_image_path(self, name, set, number, ):
+    def get_card_image_path(self, name, set, number):
         # カード名の標準化
         name = self.normalize_card_name(name)
 
@@ -670,7 +683,10 @@ class Generator():
 
     def composite_card_image(self, decklist_image, card, xy=(0, 0)):
         # カード画像ファイルが存在すれば、そのカード画像を合成する
-        card_image_path = self.get_card_image_path(card.pretty_name, card.set, card.set_number)
+        pretty_name = self.ALCHEMY_PREFIX+card.pretty_name if card.is_rebalanced else card.pretty_name
+        set = card.set
+        number = self.ALCHEMY_PREFIX+str(card.set_number) if card.is_rebalanced else card.set_number
+        card_image_path = self.get_card_image_path(pretty_name, set, number)
         if card_image_path:
             with Image.open(card_image_path) as card_image:
                 if card_image.width != CardImage.WIDTH or card_image.height != CardImage.HEIGHT:
@@ -683,7 +699,7 @@ class Generator():
                     return decklist_image.paste(card_image, xy)
         else:
             # カード画像ファイルが存在しなければダミー画像を合成する
-            card_image = self.generate_dummy_card_image(card.pretty_name)
+            card_image = self.generate_dummy_card_image(pretty_name)
             return decklist_image.alpha_composite(card_image, xy)
 
     def save_set_all_images(self, set):
