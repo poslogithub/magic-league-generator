@@ -69,6 +69,8 @@ class CardImageDownloader():
         return None
 
     def get_set_cards(self, set):
+        if set == "DAR":
+            set = "DOM" # ドミナリアのセット名がmtgsdkと異なるので合わせる
         json_path = join(self.__json_dir, set+'.json')
         if exists(json_path):
             with open(json_path) as f:
