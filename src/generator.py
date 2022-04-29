@@ -578,7 +578,9 @@ class Generator():
 
         return rst
 
-    def generate_decklist_image_from_decklist(self, decklist):
+    def generate_decklist_image_from_decklist(self, decklist, card_image_cache_dir=None):
+        if card_image_cache_dir:
+            self.card_image_cache_dir = card_image_cache_dir
         self.download_decklist_card_image(decklist)
         decklist_image_array = self.decklist_to_decklist_image_array(decklist)
         image = self.generate_decklist_image_from_array(decklist_image_array)

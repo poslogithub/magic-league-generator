@@ -264,7 +264,7 @@ class GeneratorApp(Frame):
         self.save_config()
         decklist = paste()
         if decklist:
-            image = self.generator.generate_decklist_image_from_decklist(decklist)
+            image = self.generator.generate_decklist_image_from_decklist(decklist, self.sv_card_image_cache_dir.get())
             image_path = asksaveasfilename(initialdir=self.config[ConfigKey.DECKLIST_IMAGE_OUTPUT_DIR], initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png")
             if image_path:
                 image_path = image_path.replace('/', sep)
