@@ -1,7 +1,6 @@
-from urllib.request import urlopen
-from urllib.parse import quote
+from urllib.request import urlopen, Request
 from html.parser import HTMLParser
-from enum import Enum
+from threading import Thread
 
 class Tag():
     A = 'a'
@@ -17,6 +16,18 @@ class Attr():
 
 class AttrValue():
     PAGING = 'paging'
+    VALUE = 'value'
+
+class RequestHeader():
+    ACCEPT_LANGUAGE = 'Accept-Language'
+
+class RequestHeaderValue():
+    JA_JP = 'ja-JP'
+
+class Key():
+    NAME = 'name'
+    LOCAL_NAME = 'localName'
+    NUMBER = 'number'
 
 class SearchPageHTMLParser(HTMLParser):
     URL = 'https://gatherer.wizards.com/Pages/Search/Default.aspx?action=advanced&output=compact&set=[{}]'
@@ -62,10 +73,10 @@ class SearchResultPageHTMLParser(HTMLParser):
     URL = 'https://gatherer.wizards.com/Pages/Search/Default.aspx?page={}&action=advanced&output=compact&set=[%22{}%22]'
     CARD_PRINTINGS_POSTFIX = '_cardPrintings'
 
-    def __init__(self, set):
+    def __init__(self, set, page):
         super().__init__()
         self.set = set
-        self.url = self.URL.format('{}', set)
+        self.url = self.URL.format(page, set)
 
     def feed(self, data):
         self.found_printings_div = False
@@ -101,6 +112,7 @@ class SearchResultPageHTMLParser(HTMLParser):
 class DetailPageHTMLParser(HTMLParser):
     URL = 'https://gatherer.wizards.com/Pages/Card/Details.aspx?multiverseid={}'
     SUBTITLE_POSTFIX = '_subtitleDisplay'
+    NAME_POSTFIX = '_nameRow'
     CARD_NUMBER_POSTFIX = '_CardNumberValue'
 
     def __init__(self, multiverse_id):
@@ -109,11 +121,12 @@ class DetailPageHTMLParser(HTMLParser):
 
     def feed(self, data):
         self.found_subtitle_span = False
+        self.found_name_div = False
+        self.found_name_value_div = False
         self.found_card_number_div = False
-        self.name = ""
-        self.number = 0
+        self.result = {}
         super().feed(data)
-        return self.name, self.number
+        return self.result
 
     def handle_starttag(self, tag, attrs):
         if not self.found_subtitle_span and tag == Tag.SPAN:
@@ -121,23 +134,33 @@ class DetailPageHTMLParser(HTMLParser):
                 if attr[0] == Attr.ID and attr[1].endswith(self.SUBTITLE_POSTFIX):
                     self.found_subtitle_span = True
                     break
-        elif not self.found_card_number_div and tag == Tag.DIV:
+        if not self.found_name_div and tag == Tag.DIV:
+            for attr in attrs:
+                if attr[0] == Attr.ID and attr[1].endswith(self.NAME_POSTFIX):
+                    self.found_name_div = True
+                    break
+        if self.found_name_div and not self.found_name_value_div and tag == Tag.DIV:
+            for attr in attrs:
+                if attr[0] == Attr.CLASS and attr[1] == AttrValue.VALUE:
+                    self.found_name_value_div = True
+                    break
+        if not self.found_card_number_div and tag == Tag.DIV:
             for attr in attrs:
                 if attr[0] == Attr.ID and attr[1].endswith(self.CARD_NUMBER_POSTFIX):
                     self.found_card_number_div = True
                     break
     
-    def handle_endtag(self, tag):
-        if self.found_subtitle_span and tag == Tag.SPAN:
-            self.found_subtitle_span = False
-        elif self.found_card_number_div and tag == Tag.DIV:
-            self.found_card_number_div = False
-
     def handle_data(self, data):
         if self.found_subtitle_span:
-            self.name = data.strip()
-        elif self.found_card_number_div:
-            self.number = int(data.strip(' \\r\\n'))
+            self.result[Key.LOCAL_NAME] = data
+            self.found_subtitle_span = False
+        if self.found_name_div and self.found_name_value_div:
+            self.result[Key.NAME] = data.strip()
+            self.found_name_div = False
+            self.found_name_value_div = False
+        if self.found_card_number_div:
+            self.result[Key.NUMBER] = int(data.strip(' \\r\\n'))
+            self.found_card_number_div = False
 
 class GathererSDK():
     #search_page_url = 'https://gatherer.wizards.com/Pages/Search/Default.aspx?action=advanced&output=compact&set=[{}]'
@@ -146,11 +169,16 @@ class GathererSDK():
 
     @classmethod
     def get_set_json(cls, set="SNC"):
+        results = []
         search_page_parser = SearchPageHTMLParser(set)
-
+        request = Request(search_page_parser.url, headers={RequestHeader.ACCEPT_LANGUAGE: RequestHeaderValue.JA_JP})
         try:
-            with urlopen(url=search_page_parser.url) as response:
-                search_page = str(response.read())
+            with urlopen(request) as response:
+                charset = response.headers.get_content_charset()
+                if charset:
+                    search_page = response.read().decode(charset)
+                else:
+                    search_page = str(response.read())
         except Exception as e:
             print(e)
         if not search_page:
@@ -171,29 +199,37 @@ class GathererSDK():
             else:
                 page_num = 1
         
-        search_result_page_parser = SearchResultPageHTMLParser(set)
-        search_result_page_urls = []
         for i in range(page_num):
-            url = search_result_page_parser.url.format(str(i))
-            search_result_page_urls.append(url)
-        for url in search_result_page_urls:
+            search_result_page_parser = SearchResultPageHTMLParser(set, i)
+            request = Request(search_result_page_parser.url, headers={RequestHeader.ACCEPT_LANGUAGE: RequestHeaderValue.JA_JP})
             try:
-                with urlopen(url=url) as response:
-                    search_result_page = str(response.read())
+                with urlopen(request) as response:
+                    charset = response.headers.get_content_charset()
+                    if charset:
+                        search_result_page = response.read().decode(charset)
+                    else:
+                        search_result_page = str(response.read())
             except Exception as e:
                 print(e)
             if search_result_page:
                 multiverse_ids = search_result_page_parser.feed(search_result_page)
+                detail_page_threads = []
                 for multiverse_id in multiverse_ids:
+                    thread = Thread()   #TODO
                     detail_page_parser = DetailPageHTMLParser(multiverse_id)
+                    request = Request(detail_page_parser.url, headers={RequestHeader.ACCEPT_LANGUAGE: RequestHeaderValue.JA_JP})
                     try:
-                        with urlopen(url=detail_page_parser.url) as response:
-                            detail_page = str(response.read())
+                        with urlopen(request) as response:
+                            charset = response.headers.get_content_charset()
+                            if charset:
+                                detail_page = response.read().decode(charset)
+                            else:
+                                detail_page = str(response.read())
                     except Exception as e:
                         print(e)
                     if detail_page:
-                        name, number = detail_page_parser.feed(detail_page)
-                        print(name, number)
+                        card_dict = detail_page_parser.feed(detail_page)
+                        print(card_dict)
 
 
 if __name__ == "__main__":
