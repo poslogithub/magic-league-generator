@@ -3,7 +3,7 @@ from html.parser import HTMLParser
 from threading import Thread
 from locale import getdefaultlocale
 from json import dump
-from operator import attrgetter
+from time import sleep
 
 class Tag():
     A = 'a'
@@ -171,28 +171,27 @@ class DetailPageHTMLParser(HTMLParser):
             self.found_card_number_div = False
 
 class GathererSDK():
-    #search_page_url = 'https://gatherer.wizards.com/Pages/Search/Default.aspx?action=advanced&output=compact&set=[{}]'
-    #image_url = 'https://gatherer.wizards.com/Handlers/Image.ashx?multiverseid={}&type=card'
-    #detail_page_url = 'https://gatherer.wizards.com/Pages/Card/Details.aspx?multiverseid={}'
     LOCALE = getdefaultlocale()[0].replace("_", "-")
-    RETRY_NUM = 1
+    THREAD_INTERVAL_SEC = 0.1
+    THREAD_TIMEOUT_SEC = 60
+    error = False
+
 
     def get_set_cards(self, set):
         parser = SearchPageHTMLParser(set)
         request = Request(parser.url, headers={RequestHeader.ACCEPT_LANGUAGE: self.LOCALE})
         print(parser.url+"を取得中...", flush=True)
         search_page = None
-        for _ in range(self.RETRY_NUM):
-            try:
-                with urlopen(request) as response:
-                    charset = response.headers.get_content_charset()
-                    if charset:
-                        search_page = response.read().decode(charset)
-                    else:
-                        search_page = str(response.read())
-                break
-            except Exception as e:
-                print(e)
+        try:
+            with urlopen(request) as response:
+                charset = response.headers.get_content_charset()
+                if charset:
+                    search_page = response.read().decode(charset)
+                else:
+                    search_page = str(response.read())
+        except Exception as e:
+            print(e)
+            self.error = True
         if not search_page:
             return None
 
@@ -215,10 +214,18 @@ class GathererSDK():
         self.cards = []
         for i in range(page_num):
             thread = Thread(target=self.__get_cards_detail_from_search_result, args=(set, i))
+            thread.daemon = True
             thread.start()
             threads.append(thread)
+            sleep(self.THREAD_INTERVAL_SEC)
         for thread in threads:
-            thread.join()
+            thread.join(self.THREAD_TIMEOUT_SEC)
+            if thread.is_alive():
+                self.error = True
+                break
+
+        if self.error:
+            return None
 
         self.cards.sort(key=lambda x: (x[Key.NUMBER]))
         return self.cards
@@ -226,43 +233,47 @@ class GathererSDK():
     def __get_cards_detail_from_search_result(self, set, page):
         parser = SearchResultPageHTMLParser(set, page)
         request = Request(parser.url, headers={RequestHeader.ACCEPT_LANGUAGE: self.LOCALE})
-        print(parser.url+"を取得中...", flush=True)
-        for _ in range(self.RETRY_NUM):
-            try:
-                with urlopen(request) as response:
-                    charset = response.headers.get_content_charset()
-                    if charset:
-                        search_result_page = response.read().decode(charset)
-                    else:
-                        search_result_page = str(response.read())
-                break
-            except Exception as e:
-                print(e)
-        if search_result_page:
-            multiverse_ids = parser.feed(search_result_page)
-            detail_page_threads = []
-            for multiverse_id in multiverse_ids:
-                thread = Thread(target=self.__get_card_detail, args=(multiverse_id, ))
-                thread.start()
-                detail_page_threads.append(thread)
-            for thread in detail_page_threads:
-                thread.join()
+        print(str(page)+": "+parser.url+"を取得中...", flush=True)
+        try:
+            with urlopen(request) as response:
+                charset = response.headers.get_content_charset()
+                if charset:
+                    search_result_page = response.read().decode(charset)
+                else:
+                    search_result_page = str(response.read())
+        except Exception as e:
+            print(e)
+            self.error = True
+        if not search_result_page:
+            return None
 
-    def __get_card_detail(self, multiverse_id):
+        multiverse_ids = parser.feed(search_result_page)
+        detail_page_threads = []
+        for multiverse_id in multiverse_ids:
+            thread = Thread(target=self.__get_card_detail, args=(multiverse_id, page))
+            thread.daemon = True
+            thread.start()
+            detail_page_threads.append(thread)
+            sleep(self.THREAD_INTERVAL_SEC)
+        for thread in detail_page_threads:
+            thread.join(self.THREAD_TIMEOUT_SEC)
+            if thread.is_alive():
+                self.error = True
+                break
+
+    def __get_card_detail(self, multiverse_id, page):
         parser = DetailPageHTMLParser(multiverse_id)
         request = Request(parser.url, headers={RequestHeader.ACCEPT_LANGUAGE: self.LOCALE})
-        print(parser.url+"を取得中...", flush=True)
-        for _ in range(self.RETRY_NUM):
-            try:
-                with urlopen(request) as response:
-                    charset = response.headers.get_content_charset()
-                    if charset:
-                        detail_page = response.read().decode(charset)
-                    else:
-                        detail_page = str(response.read())
-                break
-            except Exception as e:
-                print(e)
+        print(str(page)+": "+parser.url+"を取得中...", flush=True)
+        try:
+            with urlopen(request) as response:
+                charset = response.headers.get_content_charset()
+                if charset:
+                    detail_page = response.read().decode(charset)
+                else:
+                    detail_page = str(response.read())
+        except Exception as e:
+            print(e)
         if detail_page:
             card = parser.feed(detail_page)
             card[Key.MULTIVERSE_ID] = multiverse_id
