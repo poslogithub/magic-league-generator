@@ -1,2 +1,3 @@
-mtga
+Pillow
 pyperclip
+python-dateutil

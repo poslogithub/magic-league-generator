@@ -30,7 +30,7 @@ class GeneratorApp(Frame):
         # 変数
         self.config_file = GeneratorConfigFile(self.CONFIG_PATH)
         self.config = self.config_file.load()
-        self.generator = Generator(card_image_cache_dir=self.config.get(ConfigKey.CARD_IMAGE_CACHE_DIR))
+        self.generator = Generator(json_dir=self.config.get(ConfigKey.JSON_DIR), image_dir=self.config.get(ConfigKey.IMAGE_DIR))
         self.sets = [""]
         for set in self.generator.get_sets():
             if self.generator.sealedable(set):
@@ -47,7 +47,7 @@ class GeneratorApp(Frame):
             self.sv_pack_nums.append(StringVar(value=self.config.get(ConfigKey.PACK_NUMS)[i]))
         self.sv_start_time = StringVar()
         self.sv_end_time = StringVar()
-        self.sv_card_image_cache_dir = StringVar(value=self.config.get(ConfigKey.CARD_IMAGE_CACHE_DIR))
+        self.sv_card_image_cache_dir = StringVar(value=self.config.get(ConfigKey.IMAGE_DIR))
 
         # GUI
         self.master.title(self.APP_NAME)
@@ -264,7 +264,7 @@ class GeneratorApp(Frame):
         self.save_config()
         decklist = paste()
         if decklist:
-            image = self.generator.generate_decklist_image_from_decklist(decklist, self.sv_card_image_cache_dir.get())
+            image = self.generator.generate_decklist_image_from_decklist(decklist)
             image_path = asksaveasfilename(initialdir=self.config[ConfigKey.DECKLIST_IMAGE_OUTPUT_DIR], initialfile="decklist.png", filetypes=[("PNG", ".png")], defaultextension="png")
             if image_path:
                 image_path = image_path.replace('/', sep)
@@ -296,7 +296,7 @@ class GeneratorApp(Frame):
         if self.PACK_MODES.index(self.pack_mode_combobox.get()) == 1:   # パック数指定が手動の場合のみ保存
             for i in range(len(self.config.get(ConfigKey.PACK_NUMS))):
                 self.config[ConfigKey.PACK_NUMS][i] = self.sv_pack_nums[i].get()
-        self.config[ConfigKey.CARD_IMAGE_CACHE_DIR] = self.sv_card_image_cache_dir.get()
+        self.config[ConfigKey.IMAGE_DIR] = self.sv_card_image_cache_dir.get()
         self.config_file.save(self.config)
 
     def run(self):
