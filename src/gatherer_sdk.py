@@ -304,7 +304,7 @@ class DetailParserForCardData(HTMLParser):
     CARD_IMAGE_POSTFIX = '_cardImage'
     NAME_POSTFIX = '_nameRow'
     CARD_NUMBER_POSTFIX = '_numberRow'
-    CARD_COMPONENT_CLASS = 'cardDetails cardComponent'
+    CARD_COMPONENT = '_cardComponent'
 
     def __init__(self, multiverse_id):
         super().__init__()
@@ -344,11 +344,11 @@ class DetailParserForCardData(HTMLParser):
                         self.found_subtitle_span = True
                         break
         # カードコンポーネント開始
-        if tag == Tag.TABLE:
+        if tag == Tag.TD:
             for attr in attrs:
-                if attr[0] == Attr.CLASS and attr[1] == self.CARD_COMPONENT_CLASS:
+                if attr[0] == Attr.CLASS and self.CARD_COMPONENT in attr[1]:
                     self.card_component_count += 1
-            
+                    break
         # カード画像
         if tag == Tag.IMG:
             is_card_image = False
@@ -360,14 +360,16 @@ class DetailParserForCardData(HTMLParser):
                 elif attr[0] == Attr.SRC:
                     src = attr[1]
             if is_card_image:
-                if 
-
-        # カード詳細テーブル
-        if not self.found_card_details_table and tag == Tag.IMG:
-            for attr in attrs:
-                if attr[0] == Attr.ALT and attr[1] == self.result.get(Key.NAME):
-                    self.found_card_details_table = True
-                    break
+                self.cards[self.card_component_count][Key.NAME] = alt
+                queries = get_queries(src)
+                multiverse_id = int(queries.get(Query.MULTIVERSE_ID))
+                self.cards[self.card_component_count][Key.MULTIVERSE_ID] = multiverse_id
+                self.cards[self.card_component_count][Key.IMAGE_URL] = self.IMAGE_URL.format(multiverse_id)
+            elif not self.found_card_details_table: # TODO found_card_details_tableの条件をもっと何とかできないか。というかいらんくね？
+                for attr in attrs:
+                    if attr[0] == Attr.ALT and attr[1] == self.result.get(Key.NAME):
+                        self.found_card_details_table = True
+                        break
         if self.found_card_details_table:
             # 英語版カード名
             if not self.found_name_div and tag == Tag.DIV:
