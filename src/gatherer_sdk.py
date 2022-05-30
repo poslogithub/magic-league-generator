@@ -99,23 +99,27 @@ class SearchResultParserForAllPageURLs(HTMLParser):
         return self.paging_links
 
     def handle_starttag(self, tag, attrs):
-        if not self.found_paging_div and tag == Tag.DIV:
-            for attr in attrs:
-                if attr[0] == Attr.CLASS and attr[1] == AttrValue.PAGING:
-                    self.found_paging_div = True
-                    break
-        elif self.found_paging_div and tag == Tag.A:
-            self.found_paging_a = True
-            for attr in attrs:
-                if attr[0] == Attr.HREF:
-                    self.link_url = attr[1]
-                    break
+        if tag == Tag.DIV:
+            if not self.found_paging_div:
+                for attr in attrs:
+                    if attr[0] == Attr.CLASS and attr[1] == AttrValue.PAGING:
+                        self.found_paging_div = True
+                        break
+        if tag == Tag.A:
+            if self.found_paging_div:
+                self.found_paging_a = True
+                for attr in attrs:
+                    if attr[0] == Attr.HREF:
+                        self.link_url = attr[1]
+                        break
 
     def handle_endtag(self, tag):
-        if self.found_paging_div and tag == Tag.DIV:
-            self.found_paging_div = False
-        elif self.found_paging_a and tag == Tag.A:
-            self.found_paging_a = False
+        if tag == Tag.DIV:
+            if self.found_paging_div:
+                self.found_paging_div = False
+        if tag == Tag.A:
+            if self.found_paging_a:
+                self.found_paging_a = False
 
     def handle_data(self, data):
         if self.found_paging_a:
@@ -133,31 +137,30 @@ class SearchResultParserForMultiverseIds(HTMLParser):
         self.url = self.URL.format(page, set)
 
     def feed(self, data):
-        self.found_card_image_link_a = False
-        self.link_url = None
         self.multiverse_ids = []
         super().feed(data)
         return self.multiverse_ids
 
     def handle_starttag(self, tag, attrs):
         if tag == Tag.A:
+            found_card_image_link_a = False
+            link_url = None
             for attr in attrs:
                 if attr[0] == Attr.ID:
                     if attr[1].endswith(self.CARD_IMAGE_LINK_POSTFIX):
-                        self.found_card_image_link_a = True
+                        found_card_image_link_a = True
                 elif attr[0] == Attr.HREF:
-                    self.link_url = attr[1]
-            if self.found_card_image_link_a:
-                queries = get_queries(self.link_url)
+                    link_url = attr[1]
+            if found_card_image_link_a and link_url:
+                queries = get_queries(link_url)
                 multiverse_id = int(queries.get(Query.MULTIVERSE_ID))
                 self.multiverse_ids.append(multiverse_id)
-            self.found_card_image_link_a = False
-            self.link_url = None
 
 # カード詳細ページをパースして、各バリエーションのmultiverseidを取得する
 class DetailParserForVariations(HTMLParser):
     URL = 'https://gatherer.wizards.com/Pages/Card/Details.aspx?multiverseid={}'
     VARIATION_LINKS_POSTFIX = '_variationLinks'
+    COMMUNITY_RATINGS_CLASS = 'CommunityRatings'
 
     def __init__(self, multiverse_id):
         super().__init__()
@@ -165,27 +168,32 @@ class DetailParserForVariations(HTMLParser):
 
     def feed(self, data):
         self.found_variation_links_div = False
-        self.link_url = None
         self.multiverse_ids = []
         super().feed(data)
         return self.multiverse_ids
 
     def handle_starttag(self, tag, attrs):
-        if not self.found_variation_links_div and tag == Tag.DIV:
-            for attr in attrs:
-                if attr[0] == Attr.ID and attr[1].endswith(self.VARIATION_LINKS_POSTFIX):
-                    self.found_variation_links_div = True
-                    break
-        elif self.found_variation_links_div and tag == Tag.A:
-            for attr in attrs:
-                if attr[0] == Attr.HREF:
-                    self.link_url = attr[1]
-                    queries = get_queries(self.link_url)
-                    multiverse_id = int(queries.get(Query.MULTIVERSE_ID))
-                    self.multiverse_ids.append(multiverse_id)
-                    break
-            self.found_card_link_a = False
-            self.link_url = None
+        if tag == Tag.DIV:
+            if not self.found_variation_links_div:
+                for attr in attrs:
+                    if attr[0] == Attr.ID and attr[1].endswith(self.VARIATION_LINKS_POSTFIX):
+                        self.found_variation_links_div = True
+                        break
+            elif self.found_variation_links_div:
+                for attr in attrs:
+                    if attr[0] == Attr.CLASS and attr[1] == self.COMMUNITY_RATINGS_CLASS:
+                        self.found_variation_links_div = False
+                        break
+        if tag == Tag.A:
+            if self.found_variation_links_div:
+                link_url = None
+                for attr in attrs:
+                    if attr[0] == Attr.HREF:
+                        link_url = attr[1]
+                        queries = get_queries(link_url)
+                        multiverse_id = int(queries.get(Query.MULTIVERSE_ID))
+                        self.multiverse_ids.append(multiverse_id)
+                        break
 
 # 言語画面をパースして、全言語ページへのリンクを取得する
 class SearchResultParserForAllPageURLs(HTMLParser):
@@ -199,35 +207,38 @@ class SearchResultParserForAllPageURLs(HTMLParser):
         self.found_paging_div = False
         self.found_paging_a = False
         self.paging_links = []  # 2次元配列で、2次元目の0番目の値はリンクテキスト、1番目の値はSearchResultPageのURL
-        self.link_text = None
         self.link_url = None
         super().feed(data)
         return self.paging_links
 
     def handle_starttag(self, tag, attrs):
-        if not self.found_paging_div and tag == Tag.DIV:
-            for attr in attrs:
-                if attr[0] == Attr.CLASS and attr[1] == AttrValue.PAGING:
-                    self.found_paging_div = True
-                    break
-        elif self.found_paging_div and tag == Tag.A:
-            self.found_paging_a = True
-            for attr in attrs:
-                if attr[0] == Attr.HREF:
-                    self.link_url = attr[1]
-                    break
+        if tag == Tag.DIV:
+            if not self.found_paging_div:
+                for attr in attrs:
+                    if attr[0] == Attr.CLASS and attr[1] == AttrValue.PAGING:
+                        self.found_paging_div = True
+                        break
+        if tag == Tag.A:
+            if self.found_paging_div:
+                self.found_paging_a = True
+                for attr in attrs:
+                    if attr[0] == Attr.HREF:
+                        self.link_url = attr[1]
+                        break
 
     def handle_endtag(self, tag):
-        if self.found_paging_div and tag == Tag.DIV:
-            self.found_paging_div = False
-        elif self.found_paging_a and tag == Tag.A:
-            self.found_paging_a = False
+        if tag == Tag.DIV:
+            if self.found_paging_div:
+                self.found_paging_div = False
+        if tag == Tag.A:
+            if self.found_paging_a:
+                self.found_paging_a = False
 
     def handle_data(self, data):
         if self.found_paging_a:
-            self.link_text = data.replace(NBSP, "")
-            if self.link_text.isdecimal():
-                self.paging_links.append([self.link_text, self.link_url])
+            link_text = data.replace(NBSP, "")
+            if link_text.isdecimal():
+                self.paging_links.append([link_text, self.link_url])
             
 # 言語ページをパースして、各カードのmultiverseidを取得する
 class LanguageParserForLanguagesAndMultiverseIds(HTMLParser):
@@ -241,39 +252,43 @@ class LanguageParserForLanguagesAndMultiverseIds(HTMLParser):
         self.found_card_item_tr = False
         self.found_language_td = False
         self.card_item_td_count = 0
-        self.link_url = None
         self.languages = []
         self.multiverse_ids = []
         super().feed(data)
         return self.languages, self.multiverse_ids
 
     def handle_starttag(self, tag, attrs):
-        if not self.found_card_item_tr and tag == Tag.TR:
-            for attr in attrs:
-                if attr[0] == Attr.CLASS and attr[1].startswith(self.CARD_ITEM_PREFIX):
-                    self.found_card_item_tr = True
-                    self.card_item_td_count = 0
-                    break
-        elif self.found_card_item_tr and tag == Tag.A:
-            for attr in attrs:
-                if attr[0] == Attr.HREF:
-                    self.link_url = attr[1]
-                    queries = get_queries(self.link_url)
-                    multiverse_id = int(queries.get(Query.MULTIVERSE_ID))
-                    self.multiverse_ids.append(multiverse_id)
-                    break
-        elif self.found_card_item_tr and tag == Tag.TD:
-            if self.card_item_td_count == 2:
-                self.found_language_td = True
-            else:
-                self.card_item_td_count += 1
+        if tag == Tag.TR:
+            if not self.found_card_item_tr:
+                for attr in attrs:
+                    if attr[0] == Attr.CLASS and attr[1].startswith(self.CARD_ITEM_PREFIX):
+                        self.found_card_item_tr = True
+                        self.card_item_td_count = 0
+                        break
+        if tag == Tag.A:
+            if self.found_card_item_tr:
+                for attr in attrs:
+                    if attr[0] == Attr.HREF:
+                        link_url = attr[1]
+                        queries = get_queries(link_url)
+                        multiverse_id = int(queries.get(Query.MULTIVERSE_ID))
+                        self.multiverse_ids.append(multiverse_id)
+                        break
+        if tag == Tag.TD:
+            if self.found_card_item_tr:
+                if self.card_item_td_count == 2:
+                    self.found_language_td = True
+                else:
+                    self.card_item_td_count += 1
     
     def handle_endtag(self, tag, attrs):
-        if self.found_card_item_tr and tag == Tag.TR:
-            self.found_card_item_tr = False
-            self.card_item_td_count = 0
-        elif self.found_language_td and tag == Tag.TD:
-            self.found_language_td = False
+        if tag == Tag.TR:
+            if self.found_card_item_tr:
+                self.found_card_item_tr = False
+                self.card_item_td_count = 0
+        if tag == Tag.TD:
+            if self.found_language_td:
+                self.found_language_td = False
             
     def handle_data(self, data):
         if self.found_language_td:
@@ -289,6 +304,7 @@ class DetailParserForCardData(HTMLParser):
     CARD_IMAGE_POSTFIX = '_cardImage'
     NAME_POSTFIX = '_nameRow'
     CARD_NUMBER_POSTFIX = '_numberRow'
+    CARD_COMPONENT_CLASS = 'cardDetails cardComponent'
 
     def __init__(self, multiverse_id):
         super().__init__()
@@ -302,15 +318,17 @@ class DetailParserForCardData(HTMLParser):
         self.found_card_number_div = False
         self.found_card_number_value_div = False
         self.found_card_details_table = False
+        self.card_component_count = 0
         self.face_type = None
         self.cards = []
         for _ in range(2):
             self.cards.append(
                 {
                     Key.NAME: None,
-                    Key.IMAGE_URL: None,
                     Key.COLLECTOR_NUMBER: None,
                     Key.CARD_NUMBER: None,
+                    Key.MULTIVERSE_ID: None,
+                    Key.IMAGE_URL: None,
                     Key.TRANSLATED_CARDS: []
                 }
             )
@@ -318,12 +336,19 @@ class DetailParserForCardData(HTMLParser):
         return self.results
 
     def handle_starttag(self, tag, attrs):
-        # カード名
-        if not self.found_subtitle_span and tag == Tag.SPAN:
+        # 表題のカード名
+        if tag == Tag.SPAN:
+            if not self.found_subtitle_span:
+                for attr in attrs:
+                    if attr[0] == Attr.ID and attr[1].endswith(self.SUBTITLE_POSTFIX):
+                        self.found_subtitle_span = True
+                        break
+        # カードコンポーネント開始
+        if tag == Tag.TABLE:
             for attr in attrs:
-                if attr[0] == Attr.ID and attr[1].endswith(self.SUBTITLE_POSTFIX):
-                    self.found_subtitle_span = True
-                    break
+                if attr[0] == Attr.CLASS and attr[1] == self.CARD_COMPONENT_CLASS:
+                    self.card_component_count += 1
+            
         # カード画像
         if tag == Tag.IMG:
             is_card_image = False
@@ -376,7 +401,7 @@ class DetailParserForCardData(HTMLParser):
         if self.found_subtitle_span:
             if ' // ' in data:
                 self.face_type = FaceType.SPLIT
-            self.cards[0][Key.NAME] = data
+            self.cards[self.card_component_count][Key.NAME] = data
             self.found_subtitle_span = False
         # カード詳細テーブル
         if self.found_card_details_table:
