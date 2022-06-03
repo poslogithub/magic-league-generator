@@ -4,10 +4,12 @@ from html.parser import HTMLParser
 from threading import Thread
 from locale import getdefaultlocale
 from time import sleep
+from os import makedirs
 from os.path import exists, join
 from io import BytesIO
 from re import sub
 from logging import StreamHandler, getLogger, DEBUG
+from operator import itemgetter
 
 # PyPI
 from PIL import Image   # Pillow @ HPND
@@ -125,7 +127,6 @@ class SearchResultParserForPageNum(HTMLParser):
     URL = GathererURL.SEARCH_RESULTS+'?'+ \
         Query.ADVANCED_SEARCH+'&'+ \
         Query.STANDARD_OUTPUT+'&'+ \
-        Query.SORT_BY_CARD_NUMBER+'&'+ \
         Query.SEARCH_BY_SET
 
     def __init__(self, set_code):
@@ -208,7 +209,6 @@ class SearchResultParserForMultiverseIds(HTMLParser):
                 elif attr[0] == Attr.HREF:
                     link_url = attr[1]
             if found_card_image_link_a and link_url:
-                logger.debug(link_url)
                 queries = get_queries(link_url)
                 multiverse_id = int(queries.get(QueryKey.MULTIVERSE_ID))
                 self.multiverse_ids.append(multiverse_id)
@@ -508,7 +508,7 @@ class DetailParserForCardData(HTMLParser):
 
 class GathererSDK():
     LOCALE = getdefaultlocale()[0].replace("_", "-")
-    THREAD_INTERVAL_SEC = 0.01
+    THREAD_INTERVAL_SEC = 0.02
     THREAD_TIMEOUT_SEC = 60
     SET_TABLE = {   # セット名変換表
         "DAR": "DOM"    # ドミナリア
@@ -525,9 +525,41 @@ class GathererSDK():
     
     error = False
 
-    def __init__(self, json_dir=".", image_dir="."):
+    def __init__(self, json_dir="set_json", image_dir="set_image", html_dir="html_cache"):
         self.json_dir = json_dir
         self.image_dir = image_dir
+        self.html_dir = html_dir
+
+        # フォルダが存在しなければ作成する
+        if not exists(self.json_dir):
+            makedirs(self.json_dir)
+        if not exists(self.image_dir):
+            makedirs(self.image_dir)
+        if not exists(self.html_dir):
+            makedirs(self.html_dir)
+    
+    def __get_html(self, path, url):
+        html = None
+        if exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                html = f.read()
+        else:
+            logger.info(url+"を取得中...")
+            try:
+                response = requests.get(url, verify=False)
+                if response.status_code == 200:
+                    html = response.text
+            except Exception as e:
+                logger.error("An exception occured @ requests.get("+url+")")
+                logger.error(e.args)
+                return None
+            if not html:
+                logger.error("No search result page @ requests.get("+url+")")
+                return None
+            if len(html) > 0:
+                with open(path, 'w', encoding='utf-8', newline='') as f:
+                    f.write(html)
+        return html
 
     def get_set_cards(self, set_code):
         # セット名をセット名変換表で変換
@@ -543,21 +575,13 @@ class GathererSDK():
         # セットjsonファイルが無ければGathererからセット情報をダウンロードして保存してから返す
         # 検索結果HTMLを取得
         parser = SearchResultParserForPageNum(set_code)
-        search_page = None
-        logger.info(parser.url+"を取得中...")
-        try:
-            response = requests.get(parser.url, verify=False)
-            if response.status_code == 200:
-                search_page = response.text
-        except Exception as e:
-            logger.error("An error occured @ get "+parser.url)
-            logger.error(e)
-            return None
-        if not search_page:
-            logger.error("An error occured @ requests.get("+parser.url+")")
+        html_path = join(self.html_dir, set_code+'.html')
+        html = self.__get_html(html_path, parser.url)
+        if not html:
+            self.error = True
             return None
         # 検索結果HTMLをパースしてページ数を取得
-        page_num = parser.feed(search_page)
+        page_num = parser.feed(html)
         
         # 全検索結果ページから各カードのmultiverse_idを取得
         # この時点では「英語版のみ」「イラスト違いが含まれない＝セット番号が網羅されていない」「分割カード等でmultiverse_idに重複がある」
@@ -572,6 +596,7 @@ class GathererSDK():
         for thread in threads:
             thread.join(self.THREAD_TIMEOUT_SEC)
             if thread.is_alive():
+                logger.error("Timeout @ __get_multiverse_id_from_search_result")
                 self.error = True
                 break
         if self.error:
@@ -584,7 +609,7 @@ class GathererSDK():
         threads = []
         self.variation_multiverse_ids = []
         for multiverse_id in self.search_result_multiverse_ids:
-            thread = Thread(target=self.__get_variation_multiverse_id_from_detail, args=(multiverse_id,))
+            thread = Thread(target=self.__get_variation_multiverse_ids_from_detail, args=(multiverse_id,))
             thread.daemon = True
             thread.start()
             threads.append(thread)
@@ -592,6 +617,7 @@ class GathererSDK():
         for thread in threads:
             thread.join(self.THREAD_TIMEOUT_SEC)
             if thread.is_alive():
+                logger.error("Timeout @ __get_variation_multiverse_id_from_detail")
                 self.error = True
                 break
         if self.error:
@@ -612,6 +638,7 @@ class GathererSDK():
         for thread in threads:
             thread.join(self.THREAD_TIMEOUT_SEC)
             if thread.is_alive():
+                logger.error("Timeout @ __get_cards_detail_from_multiverse_id")
                 self.error = True
                 break
         if self.error:
@@ -620,8 +647,25 @@ class GathererSDK():
 
         #TODO 言語毎のカード情報
         # 言語ページをパースした後、カード番号が異なるものは排除する必要がある点に注意
+        threads = []
+        for multiverse_id in self.search_result_multiverse_ids: #言語ページにはバリエーションが含まれるのでsearch_result_multiverse_idsでよい
+            thread = Thread(target=self.__get_cards_detail_from_multiverse_id, args=(multiverse_id, ))
+            thread.daemon = True
+            thread.start()
+            threads.append(thread)
+            sleep(self.THREAD_INTERVAL_SEC)
+        for thread in threads:
+            thread.join(self.THREAD_TIMEOUT_SEC)
+            if thread.is_alive():
+                logger.error("Timeout @ __get_cards_detail_from_multiverse_id")
+                self.error = True
+                break
+        if self.error:
+            logger.error("An error occured @ __get_cards_detail_from_multiverse_id")
+            return None
 
-        self.cards.sort(key=lambda x: (x.get(Key.MULTIVERSE_ID)))
+
+        self.cards.sort(key=itemgetter(Key.MULTIVERSE_ID, Key.CARD_NUMBER))
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(self.cards, f, indent=4, ensure_ascii=False)
         return self.cards
@@ -664,62 +708,38 @@ class GathererSDK():
 
     def __get_multiverse_id_from_search_result(self, set_code, page):
         parser = SearchResultParserForMultiverseIds(set_code, page)
-        logger.info(str(page)+": "+parser.url+"を取得中...")
-        search_result_page = None
-        try:
-            response = requests.get(parser.url, verify=False)
-            if response.status_code == 200:
-                search_result_page = response.text
-        except Exception as e:
-            logger.error("An error occured @ get "+parser.url)
-            logger.error(e)
-            return None
-        if not search_result_page:
+        html_path = join(self.html_dir, set_code+'_'+str(page)+'.html')
+        html = self.__get_html(html_path, parser.url)
+        if not html:
             self.error = True
             return None
-        multiverse_ids = parser.feed(search_result_page)
+        multiverse_ids = parser.feed(html)
         self.search_result_multiverse_ids.extend(multiverse_ids)
     
-    def __get_variation_multiverse_id_from_detail(self, multiverse_id):
+    def __get_variation_multiverse_ids_from_detail(self, multiverse_id):
         parser = DetailParserForVariations(multiverse_id)
-        logger.info(parser.url+"を取得中...")
-        detail_page = None
-        try:
-            response = requests.get(parser.url, verify=False)
-            if response.status_code == 200:
-                detail_page = response.text
-        except Exception as e:
-            logger.error("An error occured @ get "+parser.url)
-            logger.error(e)
-            return None
-        if not detail_page:
+        html_path = join(self.html_dir, str(multiverse_id)+'.html')
+        html = self.__get_html(html_path, parser.url)
+        if not html:
             self.error = True
             return None
-        multiverse_ids = parser.feed(detail_page)
+        multiverse_ids = parser.feed(html)
         self.variation_multiverse_ids.extend(multiverse_ids)
 
     def __get_cards_detail_from_multiverse_id(self, multiverse_id):
         parser = DetailParserForCardData(multiverse_id)
-        logger.info(parser.url+"を取得中...")
-        detail_page = None
-        try:
-            response = requests.get(parser.url, verify=False)
-            if response.status_code == 200:
-                detail_page = response.text
-        except Exception as e:
-            logger.error("An error occured @ get "+parser.url)
-            logger.error(e)
-            return None
-        if not detail_page:
+        html_path = join(self.html_dir, str(multiverse_id)+'.html')
+        html = self.__get_html(html_path, parser.url)
+        if not html:
             self.error = True
             return None
 
-        cards = parser.feed(detail_page)
-        self.cards.append(cards)
+        cards = parser.feed(html)
+        self.cards.extend(cards)
 
 if __name__ == "__main__":
     #param = sys.argv
     set_code = "NEO"
     gatherer_sdk = GathererSDK()
     cards = gatherer_sdk.get_set_cards(set_code)
-    print(cards)
+    #print(cards)

@@ -121,3 +121,4 @@ src/test.py
 *.lnk
 *.json
 *.json
+*.html

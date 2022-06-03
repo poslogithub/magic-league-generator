@@ -1,17 +1,35 @@
-import requests
-import lxml.html
+from operator import itemgetter
 
-# WebサイトのURLを指定
-url = "https://gatherer.wizards.com/Pages/Search/Default.aspx?action=advanced&output=standard&sort=cn+&set=+[%22NEO%22]"
+class Key():
+    DETAIL_URL = 'detailUrl'
+    IMAGE_URL = 'imageUrl'
+    MULTIVERSE_ID = 'multiverseId'
+    NAME = 'name'
+    COLLECTOR_NUMBER = 'collectorNumber'
+    CARD_NUMBER = 'cardNumber'
+    TRANSLATED_CARDS = 'translatedCards'
 
-# Requestsを利用してWebページを取得する
-r = requests.get(url, verify=False)
 
-# lxmlを利用してWebページを解析する
-html = lxml.html.fromstring(r.content)
+cards = []
+for _ in range(3):
+    cards.append(
+        {
+            Key.NAME: None,
+            Key.COLLECTOR_NUMBER: None,
+            Key.CARD_NUMBER: None,
+            Key.MULTIVERSE_ID: None,
+            Key.IMAGE_URL: None,
+            Key.TRANSLATED_CARDS: []
+        }
+    )
 
-# lxmlのfindallを利用して、ヘッドラインのタイトルを取得する
-elems = html.findall('.//*[@id="ctl00_ctl00_ctl00_MainContent_SubContent_topPagingControlsContainer"]/')
-for elem in elems:
-    print(elem.get('href'))
-    print(elem.text)
+cards[0][Key.MULTIVERSE_ID] = 3
+cards[0][Key.CARD_NUMBER] = "5a"
+cards[1][Key.MULTIVERSE_ID] = 4
+cards[1][Key.CARD_NUMBER] = "5a"
+cards[2][Key.MULTIVERSE_ID] = 3
+cards[2][Key.CARD_NUMBER] = "4"
+
+cards.sort(key=itemgetter(Key.MULTIVERSE_ID, Key.CARD_NUMBER))
+
+print(cards)
