@@ -140,7 +140,7 @@ class SearchResultParserForPageNum(HTMLParser):
         self.link_text = None
         self.link_url = None
         super().feed(data)
-        # 検索結果HTMLをパースして全検索結果ページのURLを取得
+        # リンク一覧からページ数を取得
         if self.paging_links:
             if self.paging_links[-1][0] == '>':
                 page_num = int(self.paging_links[-2][0])
@@ -272,7 +272,16 @@ class LanguageParserForPageNum(HTMLParser):
         self.paging_links = []  # 2次元配列で、2次元目の0番目の値はリンクテキスト、1番目の値はSearchResultPageのURL
         self.link_url = None
         super().feed(data)
-        return self.paging_links
+        # リンク一覧からページ数を取得
+        if self.paging_links:
+            if self.paging_links[-1][0] == '>':
+                page_num = int(self.paging_links[-2][0])
+            elif self.paging_links[-1][0] == '>>':
+                queries = get_queries(self.paging_links[-1][1])
+                page_num = int(queries[QueryKey.PAGE])
+            else:
+                page_num = 1
+        return page_num
 
     def handle_starttag(self, tag, attrs):
         if tag == Tag.DIV:
@@ -588,7 +597,7 @@ class GathererSDK():
         threads = []
         self.search_result_multiverse_ids = []
         for i in range(page_num):
-            thread = Thread(target=self.__get_multiverse_id_from_search_result, args=(set_code, i))
+            thread = Thread(target=self.__get_multiverse_ids_from_search_result, args=(set_code, i))
             thread.daemon = True
             thread.start()
             threads.append(thread)
@@ -609,7 +618,7 @@ class GathererSDK():
         threads = []
         self.variation_multiverse_ids = []
         for multiverse_id in self.search_result_multiverse_ids:
-            thread = Thread(target=self.__get_variation_multiverse_ids_from_detail, args=(multiverse_id,))
+            thread = Thread(target=self.__get_variations_multiverse_id_from_detail, args=(multiverse_id,))
             thread.daemon = True
             thread.start()
             threads.append(thread)
@@ -630,7 +639,7 @@ class GathererSDK():
         threads = []
         self.cards = []
         for multiverse_id in self.variation_multiverse_ids:
-            thread = Thread(target=self.__get_cards_detail_from_multiverse_id, args=(multiverse_id, ))
+            thread = Thread(target=self.__get_card_detail_from_detail, args=(multiverse_id, ))
             thread.daemon = True
             thread.start()
             threads.append(thread)
@@ -648,8 +657,10 @@ class GathererSDK():
         #TODO 言語毎のカード情報
         # 言語ページをパースした後、カード番号が異なるものは排除する必要がある点に注意
         threads = []
+        self.search_result_multiverse_ids = []
+        self.transrated_cards = []
         for multiverse_id in self.search_result_multiverse_ids: #言語ページにはバリエーションが含まれるのでsearch_result_multiverse_idsでよい
-            thread = Thread(target=self.__get_cards_detail_from_multiverse_id, args=(multiverse_id, ))
+            thread = Thread(target=self.__get_transrated_multiverse_ids_from_language, args=(multiverse_id, ))
             thread.daemon = True
             thread.start()
             threads.append(thread)
@@ -706,9 +717,9 @@ class GathererSDK():
             return None
         return None
 
-    def __get_multiverse_id_from_search_result(self, set_code, page):
+    def __get_multiverse_ids_from_search_result(self, set_code, page):
         parser = SearchResultParserForMultiverseIds(set_code, page)
-        html_path = join(self.html_dir, set_code+'_'+str(page)+'.html')
+        html_path = join(self.html_dir, set_code+'_'+str(page)+'_search_result.html')
         html = self.__get_html(html_path, parser.url)
         if not html:
             self.error = True
@@ -716,9 +727,9 @@ class GathererSDK():
         multiverse_ids = parser.feed(html)
         self.search_result_multiverse_ids.extend(multiverse_ids)
     
-    def __get_variation_multiverse_ids_from_detail(self, multiverse_id):
+    def __get_variations_multiverse_id_from_detail(self, multiverse_id):
         parser = DetailParserForVariations(multiverse_id)
-        html_path = join(self.html_dir, str(multiverse_id)+'.html')
+        html_path = join(self.html_dir, str(multiverse_id)+'_detail.html')
         html = self.__get_html(html_path, parser.url)
         if not html:
             self.error = True
@@ -726,16 +737,52 @@ class GathererSDK():
         multiverse_ids = parser.feed(html)
         self.variation_multiverse_ids.extend(multiverse_ids)
 
-    def __get_cards_detail_from_multiverse_id(self, multiverse_id):
+    def __get_card_detail_from_detail(self, multiverse_id):
         parser = DetailParserForCardData(multiverse_id)
-        html_path = join(self.html_dir, str(multiverse_id)+'.html')
+        html_path = join(self.html_dir, str(multiverse_id)+'_detail.html')
         html = self.__get_html(html_path, parser.url)
         if not html:
             self.error = True
             return None
-
         cards = parser.feed(html)
         self.cards.extend(cards)
+
+    def __get_transrated_multiverse_ids_from_language(self, multiverse_id):
+        # 言語HTMLを取得
+        parser = LanguageParserForPageNum(multiverse_id)
+        html_path = join(self.html_dir, str(multiverse_id)+'_language.html')
+        html = self.__get_html(html_path, parser.url)
+        if not html:
+            self.error = True
+            return None
+        # 言語HTMLをパースしてページ数を取得
+        page_num = parser.feed(html)
+
+        # 全言語ページから各カードのmultiverse_idを取得
+        threads = []
+        self.language_multiverse_ids = []
+        for i in range(page_num):
+            thread = Thread(target=self.__get_multiverse_ids_from_language, args=(set_code, i))
+            thread.daemon = True
+            thread.start()
+            threads.append(thread)
+            sleep(self.THREAD_INTERVAL_SEC)
+        for thread in threads:
+            thread.join(self.THREAD_TIMEOUT_SEC)
+            if thread.is_alive():
+                logger.error("Timeout @ __get_multiverse_id_from_search_result")
+                self.error = True
+                break
+        if self.error:
+            logger.error("An error occured @ __get_multiverse_id_from_search_result")
+            return None
+        # multiverse_idの重複を削除
+        self.search_result_multiverse_ids = list(set(self.search_result_multiverse_ids))
+
+        transrated_cards = parser.feed(html)
+        for transrated_card in transrated_cards:
+            for card in self.cards:
+                pass
 
 if __name__ == "__main__":
     #param = sys.argv
