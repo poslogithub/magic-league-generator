@@ -4,14 +4,13 @@ from dateutil.relativedelta import relativedelta
 from dateutil.tz import gettz
 from hashlib import sha512
 from operator import attrgetter
-from os.path import exists, join
 from re import sub
 from threading import Thread
 from PIL import Image, ImageDraw, ImageFont
 import random
 import re
 from mtga.set_data import all_mtga_cards
-from card_image_downloader import CardImageDownloader
+from gatherer_sdk import GathererSDK
 from io import BytesIO
 
 class Rarity():
@@ -68,8 +67,18 @@ class Generator():
     BASIC_LANDS = ["平地", "島", "沼", "山", "森", "Plains", "Island", "Swamp", "Mountain", "Forest"]
     ALCHEMY_PREFIX = "A-"
 
-    def __init__(self, pool=all_mtga_cards, card_image_cache_dir='.'):
-        self.downloader = CardImageDownloader(language='Japanese', json_dir='set_data')
+    IMAGE_FORMATS = {
+        'PNG': '.png',
+        'JPEG': '.jpg',
+        'GIF': '.gif',
+        'BMP': '.bmp',
+        'DIB': '.dib',
+        'TIFF': '.tiff',
+        'PPM': '.ppm'
+    }
+
+    def __init__(self, pool=all_mtga_cards, json_dir='set_data', image_dir='.'):
+        self.gatherer_sdk = GathererSDK(json_dir, image_dir)
         self.cards = pool.cards
         self.sets = self.get_sets()
         self.set_info = {}
@@ -85,7 +94,6 @@ class Generator():
             self.set_info[set][Rarity.COMMON] = len(cards)
             cards = self.get_cards(set=set, rarity=Rarity.BASIC)
             self.set_info[set][Rarity.BASIC] = len(cards)
-        self.card_image_cache_dir = card_image_cache_dir
     
     def add_card(self, set, rarity, picked_cards):
         cards = self.get_cards(set=set, rarity=rarity)
@@ -347,7 +355,9 @@ class Generator():
     
     def download_set_card_image_from_parsed_decklist(self, parsed_decklist, set):
         # セットのカード一覧を取得
-        self.downloader.get_set_cards(set)
+        cards = self.gatherer_sdk.get_set_cards(set)
+        if not cards:
+            return None
 
         # パースしたデッキリストの各カードについて、対象セットのカード画像を並列ダウンロード
         threads = []
@@ -358,7 +368,7 @@ class Generator():
                 if name.startswith(self.ALCHEMY_PREFIX):   # アルケミー対応
                     #name = sub("^"+self.ALCHEMY_PREFIX, "", name, 1)
                     number = self.ALCHEMY_PREFIX+str(number)
-                threads.append(Thread(target=self.get_card_image_path, args=(name, set, number)))
+                threads.append(Thread(target=self.gatherer_sdk.get_card_image, args=(set, number)))
                 threads[-1].start()
         for thread in threads:
             thread.join()
@@ -578,9 +588,7 @@ class Generator():
 
         return rst
 
-    def generate_decklist_image_from_decklist(self, decklist, card_image_cache_dir=None):
-        if card_image_cache_dir:
-            self.card_image_cache_dir = card_image_cache_dir
+    def generate_decklist_image_from_decklist(self, decklist):
         self.download_decklist_card_image(decklist)
         decklist_image_array = self.decklist_to_decklist_image_array(decklist)
         image = self.generate_decklist_image_from_array(decklist_image_array)
@@ -657,47 +665,20 @@ class Generator():
     def normalize_card_name(cls, card_name):
         return sub(r'["*/:<>?\\\|]', '-', card_name)
 
-    def get_card_image_path(self, name, set, number):
-        # カード名の標準化
-        name = self.normalize_card_name(name)
-
-        # カード名.拡張子ファイルが存在する場合、そのパスを返す
-        for ext in self.downloader.FORMATS.values():
-            card_image_path = join(self.card_image_cache_dir, name + ext)
-            if exists(card_image_path):
-                return card_image_path
-
-        # カード名.拡張子ファイルが存在しない場合、CardImageDownloaderでカード画像をダウンロードする
-        card_image_data = self.downloader.get_card_image_data(set, number)
-        if card_image_data:
-            with Image.open(BytesIO(card_image_data)) as card_image:
-                format = card_image.format
-            if self.downloader.FORMATS.get(format):
-                card_image_path = join(self.card_image_cache_dir, name + self.downloader.FORMATS[format])
-            else:
-                card_image_path = join(self.card_image_cache_dir, name)
-            with open(card_image_path, 'wb') as card_image_file:
-                card_image_file.write(card_image_data)
-            return card_image_path
-        
-        # カード画像がダウンロードできなかった場合、Noneを返す
-        return None
-
     def composite_card_image(self, decklist_image, card, xy=(0, 0)):
         # カード画像ファイルが存在すれば、そのカード画像を合成する
         pretty_name = self.ALCHEMY_PREFIX+card.pretty_name if card.is_rebalanced else card.pretty_name
         set = card.set
         number = self.ALCHEMY_PREFIX+str(card.set_number) if card.is_rebalanced else card.set_number
-        card_image_path = self.get_card_image_path(pretty_name, set, number)
-        if card_image_path:
-            with Image.open(card_image_path) as card_image:
+        card_image = self.gatherer_sdk.get_card_image(set, number)
+        if card_image:
+            with Image.open(BytesIO(card_image)) as card_image:
+                # 必要に応じてリサイズ
                 if card_image.width != CardImage.WIDTH or card_image.height != CardImage.HEIGHT:
-                    # 必要に応じてリサイズ
                     card_image = card_image.resize((CardImage.WIDTH, CardImage.HEIGHT))
-                if card_image.format == 'PNG':
+                if card_image.format == 'PNG':  # PNGならばアルファブレンド
                     return decklist_image.alpha_composite(card_image, xy)
-                else:
-                    # PNGでなければ貼り付け
+                else:   # PNGでなければ貼り付け
                     return decklist_image.paste(card_image, xy)
         else:
             # カード画像ファイルが存在しなければダミー画像を合成する
@@ -705,7 +686,7 @@ class Generator():
             return decklist_image.alpha_composite(card_image, xy)
 
     def save_set_all_images(self, set):
-        names = self.downloader.save_set_all_images(set, self.card_image_cache_dir)
+        names = self.gatherer_sdk.save_set_all_images(set)
         return names
 
     @classmethod

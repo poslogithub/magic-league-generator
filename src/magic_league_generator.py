@@ -1,4 +1,4 @@
-from cmath import pi
+#from cmath import pi
 from datetime import datetime
 from tkinter import Button, Frame, LabelFrame, StringVar, Tk, E, N, W
 from tkinter.filedialog import askdirectory, asksaveasfilename
@@ -30,7 +30,8 @@ class GeneratorApp(Frame):
         # 変数
         self.config_file = GeneratorConfigFile(self.CONFIG_PATH)
         self.config = self.config_file.load()
-        self.generator = Generator(json_dir=self.config.get(ConfigKey.JSON_DIR), image_dir=self.config.get(ConfigKey.IMAGE_DIR))
+        #self.generator = Generator(json_dir=self.config.get(ConfigKey.JSON_DIR), image_dir=self.config.get(ConfigKey.IMAGE_DIR))
+        self.generator = Generator(card_image_cache_dir=self.config.get(ConfigKey.IMAGE_DIR))
         self.sets = [""]
         for set in self.generator.get_sets():
             if self.generator.sealedable(set):
