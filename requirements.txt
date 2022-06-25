@@ -3,3 +3,4 @@ pyperclip
 python-dateutil
 mtgsdk
 mtga>=0.9.3
+scrython
