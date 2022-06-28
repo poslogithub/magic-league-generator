@@ -7,7 +7,6 @@ from hashlib import md5
 from re import sub
 from PIL import Image
 from io import BytesIO
-from sys import _getframe
 
 class CardImageDownloader():
     FORMATS = {
@@ -20,22 +19,9 @@ class CardImageDownloader():
         'PPM': '.ppm'
     }
 
-    def __init__(self, sdk):
-        self.sdk = sdk
-    
-    
-    def get_card_image(self, set, number, back=False):
-        url = self.sdk.get_card_image_url(set, number, back)
-        try:
-            with urlopen(url) as response:
-                image_data = response.read()
-        except Exception as e:
-            print('Exception has occured @ {}({}, {}, {}) urlopen({}).'.format(self.__class__, _getframe().f_code.co_name, set, number, back, url))
-            print(e.args, flush=True)
-            return None
-        
-        return image_data
-
+    def __init__(self, language='Japanese', json_dir='.'):
+        self.__language = language
+        self.__json_dir = json_dir
 
     def get_card_name_and_image_data(self, set, number, language=None):
         card = self.__get_card(set, number)

@@ -597,8 +597,7 @@ class GathererSDK():
         threads = []
         self.search_result_multiverse_ids = []
         for i in range(page_num):
-            thread = Thread(target=self.__get_multiverse_ids_from_search_result, args=(set_code, i))
-            thread.daemon = True
+            thread = Thread(target=self.__get_multiverse_ids_from_search_result, args=(set_code, i), daemon=True)
             thread.start()
             threads.append(thread)
             sleep(self.THREAD_INTERVAL_SEC)
