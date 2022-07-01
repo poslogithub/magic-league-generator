@@ -3,6 +3,7 @@ from locale import getlocale
 from os import makedirs
 from os.path import exists, join
 from sys import _getframe
+from time import sleep
 
 from mtgsdk import Card
 from util import EXT_JSON, SET_TABLE, UTF_8
@@ -38,16 +39,17 @@ class MtgSdk():
                     self.cards[set] = load(fp)
                 return self.cards[set]
             except Exception as e:
-                print('Exception has occured @ {}.{} load {}.'.format(self.__class__, _getframe().f_code.co_name, json_path))
+                print('An exception occured @ {}.{} load {}.'.format(self.__class__, _getframe().f_code.co_name, json_path))
                 print(e.args)
                 return None
 
         try:
             print('Downloading {} set data...'.format(set), end='', flush=True)
             cards = Card.where(set=set).all()
+            sleep(0.1)
             print('complete.', flush=True)
         except Exception as e:
-            print('Exception has occured @ {}.{} Card.where({}).all().'.format(self.__class__, _getframe().f_code.co_name, set))
+            print('An exception occured @ {}.{} Card.where({}).all().'.format(self.__class__, _getframe().f_code.co_name, set))
             print(e.args, flush=True)
             return None
 
@@ -71,18 +73,18 @@ class MtgSdk():
         
         try:
             if not exists(self.json_dir):
-                makedirs(self.json_dir)
+                makedirs(self.json_dir, exist_ok=True)
             with open(json_path, 'w', encoding=UTF_8) as fp:
                 dump(self.cards[set], fp, ensure_ascii=False, indent=4)
         except Exception as e:
-            print('Exception has occured @ {}.{} dump {}.'.format(self.__class__, _getframe().f_code.co_name, json_path))
+            print('An exception occured @ {}.{} dump {}.'.format(self.__class__, _getframe().f_code.co_name, json_path))
             print(e.args, flush=True)
             return None
 
         return self.cards[set]
 
 
-    def get_card(self, set, number):    #TODO
+    def get_card(self, set, number):
         set_cards = self.get_set_cards(set)
         cards = []
         if set_cards:
