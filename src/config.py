@@ -7,7 +7,7 @@ class ConfigFile():
     def __init__(self, path=None):
         self.path = path if path else "config.json"
         if not exists(dirname(self.path)):
-            makedirs(dirname(self.path))
+            makedirs(dirname(self.path), exist_ok=True)
         self.config = {}
 
     def load(self):
@@ -20,4 +20,4 @@ class ConfigFile():
     
     def save(self, config):
         with open(self.path, 'w', encoding="utf_8_sig") as wf:
-            json.dump(config, wf, indent=4, ensure_ascii=False)
+            json.dump(config, wf, ensure_ascii=False, indent=4)

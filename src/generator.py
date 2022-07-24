@@ -13,6 +13,8 @@ import re
 from mtga.set_data import all_mtga_cards
 from card_image_downloader import CardImageDownloader
 from io import BytesIO
+from mtgsdk_wrapper import MtgSdkWrapper
+from scrython_wrapper import ScrythonWrapper
 
 class Rarity():
     TOKEN = "Token"
@@ -58,7 +60,6 @@ class CardImage():
     ROW_MARGIN = 10
 
 class Generator():
-
     TZ_UTC = gettz("UTC")
     MONTHLY_RESET_HOUR = 20
     WEEKLY_RESET_HOUR = 8
@@ -68,8 +69,8 @@ class Generator():
     BASIC_LANDS = ["平地", "島", "沼", "山", "森", "Plains", "Island", "Swamp", "Mountain", "Forest"]
     ALCHEMY_PREFIX = "A-"
 
-    def __init__(self, pool=all_mtga_cards, card_image_cache_dir='.'):
-        self.downloader = CardImageDownloader(language='Japanese', json_dir='set_data')
+    def __init__(self, pool=all_mtga_cards, wrapper=None):
+        self.downloader = CardImageDownloader(wrapper=wrapper)
         self.cards = pool.cards
         self.sets = self.get_sets()
         self.set_info = {}
@@ -85,7 +86,6 @@ class Generator():
             self.set_info[set][Rarity.COMMON] = len(cards)
             cards = self.get_cards(set=set, rarity=Rarity.BASIC)
             self.set_info[set][Rarity.BASIC] = len(cards)
-        self.card_image_cache_dir = card_image_cache_dir
     
     def add_card(self, set, rarity, picked_cards):
         cards = self.get_cards(set=set, rarity=rarity)
@@ -311,7 +311,7 @@ class Generator():
         return decklist_cards
     
     @classmethod
-    def parse_decklist(cls, decklist):  # rst[カード名] = [セット略号, コレクター番号]
+    def parse_decklist(cls, decklist):  # rst[カード名] = [セット略号, コレクター番号, 裏面か]
         rst = {}
         decklist_lines = decklist.splitlines()
         for line in decklist_lines:
@@ -321,28 +321,16 @@ class Generator():
                 if name not in rst.keys():
                     set = splited_line[-2].strip("()")
                     number = int(splited_line[-1])
-                    rst[name] = [set, number]
+                    rst[name] = [set, number, False]
         return rst
 
     def download_decklist_card_image(self, decklist):
         # デッキリストをパース
         parsed_decklist = self.parse_decklist(decklist)
 
-        # パースしたデッキリストからセット一覧を取得
-        sets = []
-        for key in parsed_decklist.keys():
-            set = parsed_decklist[key][0]
-            if set not in sets:
-                sets.append(set)
-
-        # セット毎にカード画像を並列で取得
+        # カード画像を取得
         print("カード画像の取得を開始")
-        threads = []
-        for set in sets:
-            threads.append(Thread(target=self.download_set_card_image_from_parsed_decklist, args=(parsed_decklist, set)))
-            threads[-1].start()
-        for thread in threads:
-            thread.join()
+        self.downloader.get_card_images(list(parsed_decklist.values()))
         print("カード画像の取得が完了")
     
     def download_set_card_image_from_parsed_decklist(self, parsed_decklist, set):
@@ -578,9 +566,7 @@ class Generator():
 
         return rst
 
-    def generate_decklist_image_from_decklist(self, decklist, card_image_cache_dir=None):
-        if card_image_cache_dir:
-            self.card_image_cache_dir = card_image_cache_dir
+    def generate_decklist_image_from_decklist(self, decklist):
         self.download_decklist_card_image(decklist)
         decklist_image_array = self.decklist_to_decklist_image_array(decklist)
         image = self.generate_decklist_image_from_array(decklist_image_array)
@@ -658,27 +644,18 @@ class Generator():
         return sub(r'["*/:<>?\\\|]', '-', card_name)
 
     def get_card_image_path(self, name, set, number):
-        # カード名の標準化
-        name = self.normalize_card_name(name)
-
         # カード名.拡張子ファイルが存在する場合、そのパスを返す
         for ext in self.downloader.FORMATS.values():
-            card_image_path = join(self.card_image_cache_dir, name + ext)
+            card_image_path = join(self.downloader.image_dir, str(number) + ext)
             if exists(card_image_path):
                 return card_image_path
 
         # カード名.拡張子ファイルが存在しない場合、CardImageDownloaderでカード画像をダウンロードする
-        card_image_data = self.downloader.get_card_image_data(set, number)
-        if card_image_data:
-            with Image.open(BytesIO(card_image_data)) as card_image:
-                format = card_image.format
-            if self.downloader.FORMATS.get(format):
-                card_image_path = join(self.card_image_cache_dir, name + self.downloader.FORMATS[format])
-            else:
-                card_image_path = join(self.card_image_cache_dir, name)
-            with open(card_image_path, 'wb') as card_image_file:
-                card_image_file.write(card_image_data)
-            return card_image_path
+        images = self.downloader.get_card_images([(set, number, False)])
+        if images:
+            card_image_path = join(self.downloader.image_dir, str(number) + ext)
+            if exists(card_image_path):
+                return card_image_path
         
         # カード画像がダウンロードできなかった場合、Noneを返す
         return None
@@ -704,9 +681,6 @@ class Generator():
             card_image = self.generate_dummy_card_image(pretty_name)
             return decklist_image.alpha_composite(card_image, xy)
 
-    def save_set_all_images(self, set):
-        names = self.downloader.save_set_all_images(set, self.card_image_cache_dir)
-        return names
 
     @classmethod
     def draw_translucence_rectangle(cls, decklist_image, xy=(0, 0), size=(0, 0), fill=(0, 0, 0, 0)):
@@ -714,6 +688,7 @@ class Generator():
         draw = ImageDraw.Draw(rectangle)
         draw.rectangle((0, 0) + size, fill)
         return decklist_image.alpha_composite(rectangle, xy)
+
     
     @classmethod
     def generate_dummy_card_image(cls, card_name):
@@ -735,3 +710,11 @@ class Generator():
         font = ImageFont.truetype('meiryo', 32)
 #        draw.text((xy[0]+3, xy[1]+3), text, fill=(0, 0, 0), font=font, anchor='rm')
         draw.text(xy, text, fill=(255, 255, 255), font=font, anchor='rm')
+
+
+if __name__ == "__main__":
+    with open('sample_decklist.txt', 'r', encoding='utf-8') as fp:
+        decklist = fp.read()
+    generator = Generator()
+    image = generator.generate_decklist_image_from_decklist(decklist)
+    image.save('sample_decklist.png')

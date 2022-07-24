@@ -1,13 +1,14 @@
-from urllib.error import URLError
-from mtgsdk import Card
+from os import makedirs
 from os.path import exists, join
-import json
 from urllib.request import urlopen
-from hashlib import md5
-from re import sub
 from PIL import Image
 from io import BytesIO
 from sys import _getframe
+from threading import Thread
+from time import sleep
+from scrython_wrapper import ScrythonWrapper
+
+from traceback import print_exc
 
 class CardImageDownloader():
     FORMATS = {
@@ -20,179 +21,149 @@ class CardImageDownloader():
         'PPM': '.ppm'
     }
 
-    def __init__(self, sdk):
-        self.sdk = sdk
+    IMAGE_DIR = 'card_image'
+    CARD_WIDTH = 265
+    CARD_HEIGHT = 370
+    ALPHA_CHANNEL_PATH = 'alpha_channel.png'
+
+
+    def __init__(self, wrapper=None, image_dir=None):
+        self.wrapper = wrapper if wrapper else ScrythonWrapper()
+        self.image_dir = image_dir if image_dir else self.IMAGE_DIR
     
-    
-    def get_card_image(self, set, number, back=False):
-        url = self.sdk.get_card_image_url(set, number, back)
-        try:
-            with urlopen(url) as response:
-                image_data = response.read()
-        except Exception as e:
-            print('Exception has occured @ {}({}, {}, {}) urlopen({}).'.format(self.__class__, _getframe().f_code.co_name, set, number, back, url))
-            print(e.args, flush=True)
-            return None
+
+    def get_card_images(self, set_number_backs):    # set_number_backs: [(set, number, back), ...]
+        urls = []
+        for set_number_back in set_number_backs:
+            url = self.wrapper.get_card_image_url(set_number_back[0], set_number_back[1], set_number_back[2])
+            urls.append(url)
         
-        return image_data
+        self.images = list(range(len(set_number_backs)))
+        threads = []
+        for i in range(len(set_number_backs)):
+            thread = Thread(target=self.get_card_image, args=(set_number_backs[i][0], set_number_backs[i][1], set_number_backs[i][2], urls[i], i), daemon=True)
+            thread.start()
+            threads.append(thread)
+            sleep(0.1)
+        
+        for i in range(len(threads)):
+            threads[i].join(60)
+            if threads[i].is_alive():
+                print('Timeout occured @ {}.{} {}({}, {}, {}, {}, {})'.format(self.__class__, _getframe().f_code.co_name, 'get_card_image', set_number_backs[i][0], set_number_backs[i][1], set_number_backs[i][2], urls[i], i))
+                return None
+        
+        return self.images
 
 
-    def get_card_name_and_image_data(self, set, number, language=None):
-        card = self.__get_card(set, number)
-        if card:
-            return self.__get_card_name_and_image_data(card, language if language else self.__language)
+    def get_card_image(self, set, number, back, url, i):
+        set_dir = join(self.image_dir, set)
+        is_exist = False
+        if not exists(set_dir):
+            try:
+                makedirs(set_dir, exist_ok=True)
+            except:
+                print_exc()
+                self.images[i] = None
+                return None
         else:
-            return None, None
-    
-    def get_card_image_data(self, set, number, language=None):
-        _, image_data = self.get_card_name_and_image_data(set, number, language if language else self.__language)
-        return image_data
-
-    def save_set_all_images(self, set, dir='.', language=None):
-        cards = self.get_set_cards(set)
-        names = []
-        for card in cards:
-            name = self.__get_card_name(card, language if language else self.__language)
-            is_exist = False
-            for ext in self.FORMATS.values():
-                path = join(dir, sub(r'["*/:<>?\\\|]', '-', name+ext))
-                if exists(path):
+            for format in self.FORMATS.values():
+                image_path = join(set_dir, str(number)+('b' if back else '')+format)
+                if exists(image_path):
                     is_exist = True
                     break
-            if not is_exist:
-                name, image_data = self.__get_card_name_and_image_data(card, language if language else self.__language)
-                if name and image_data:
-                    with Image.open(BytesIO(image_data)) as image:
-                        format = image.format
-                        ext = self.FORMATS.get(format)
-                        if ext:
-                            path = join(dir, sub(r'["*/:<>?\\\|]', '-', name+self.FORMATS[format]))
-                            if not exists(path):
-                                image.save(path)
-                                names.append(name)
-        return names
 
-    __CARD_BACK_IMAGE_MD5 = 'db0c48db407a907c16ade38de048a441'
-    
-    def __get_card(self, set, number):
-        cards = self.get_set_cards(set)
-        if cards:
-            for card in cards:
-                if card.get('number') == str(number):
-                    return card
-        return None
-
-    def get_set_cards(self, set):
-        if set == "DAR":
-            set = "DOM" # ドミナリアのセット名がmtgsdkと異なるので合わせる
-        json_path = join(self.__json_dir, set+'.json')
-        if exists(json_path):
-            with open(json_path) as f:
-                set_cards = json.load(f)
-        else:
-            set_cards = {}
-        if set in set_cards.keys():
-            return set_cards[set]
-        else:
-            set_cards[set] = []
+        if not is_exist:
             try:
-                cards = Card.where(set=set).all()
-                for card in cards:
-                    entry = {}
-                    if card.foreign_names:
-                        entry['foreignNames'] = []
-                        for foreign_name in card.foreign_names:
-                            entry['foreignNames'].append(
-                                {
-                                    "name": foreign_name.get("name"),
-                                    "imageUrl": foreign_name.get("imageUrl"),
-                                    "language": foreign_name.get("language")
-                                }
-                            )
-                    entry['imageUrl'] = card.image_url
-                    entry['name'] = card.name
-                    entry['number'] = card.number
-                    set_cards[set].append(entry)
-                with open(json_path, 'w') as f:
-                    f.write(json.dumps(set_cards))
-                print("セット"+set+"カード一覧の取得に成功", flush=True)
-                return set_cards[set]
-            except Exception as e:
-                print("セット"+set+"カード一覧の取得に失敗", flush=True)
-                print(e.args, flush=True)
+                with urlopen(url, timeout=60) as response:
+                    image_data = response.read()
+            except:
+                print_exc()
+                print('{}, {}, {}, {}, {}'.format(set, number, back, url, i))
+                self.images[i] = None
                 return None
-    
-    @classmethod
-    def __get_card_name(cls, card, language):
-        name = None
-        if card:
-            if card.get('foreignNames'):
-                for foreign_name in card['foreignNames']:
-                    if foreign_name.get('language') == language:
-                        name = foreign_name.get('name')
-                        break
-            if name is None:
-                name = card['name']
-        return name
-
-    @classmethod
-    def __get_card_name_and_image_data(cls, card, language):
-        name = None
-        image_data = None
-        if card:
-            if card.get('foreignNames'):
-                for foreign_name in card['foreignNames']:
-                    if foreign_name.get('language') == language:
-                        name = foreign_name.get('name')
-                        image_url = foreign_name.get('imageUrl')
-                        if image_url:
-                            image_data = cls.__download_image_data_from_url(image_url, name)
-                        break
-            if image_data is None:
-                name = card.get('name')
-                image_url = card.get('imageUrl')
-                if image_url:
-                    image_data = cls.__download_image_data_from_url(image_url, name)
-        return name, image_data
-
-    @classmethod
-    def __download_image_data_from_url(cls, image_url, name=None):
+            
+            try:
+                with Image.open(BytesIO(image_data)) as image:
+                    if image.width != self.CARD_WIDTH or image.height != self.CARD_HEIGHT:
+                        image = image.resize((self.CARD_WIDTH, self.CARD_HEIGHT))
+                    format = image.format
+                    if format != 'PNG':
+                        try:
+                            with Image.open(self.ALPHA_CHANNEL_PATH).convert('L') as alpha_channel:
+                                image.putalpha(alpha_channel)
+                        except:
+                            print_exc()
+                    ext = self.FORMATS.get(format)
+                    if ext:
+                        image_path = join(set_dir, str(number)+('b' if back else '')+self.FORMATS.get('PNG'))
+                        try:
+                            image.save(image_path)
+                            print('{} has been saved.'.format(image_path))
+                        except:
+                            print_exc()
+                            self.images[i] = None
+                    else:
+                        print('Unknown image format {} @ {}.{}'.format(format, self.__class__, _getframe().f_code.co_name))
+                        self.images[i] = None
+            except:
+                print_exc()
+                self.images[i] = None
+                
         try:
-            with urlopen(url=image_url) as response:
-                image_data = response.read()
-        except URLError as e:
-            image_data = None
-        except ConnectionError as e:
-            image_data = None
+            return Image.open(image_path)
+        except:
+            print_exc()
+            return None
 
-        if image_data and md5(image_data).hexdigest() == cls.__CARD_BACK_IMAGE_MD5:
-            image_data = None
-
-        if image_data:
-            if name:
-                print(name+"のダウンロードに成功", flush=True)
-            else:
-                print(image_url+"のダウンロードに成功", flush=True)
-        else:
-            if name:
-                print(name+"のダウンロードに失敗", flush=True)
-            else:
-                print(image_url+"のダウンロードに失敗", flush=True)
-        
-        return image_data
 
 if __name__ == "__main__":
-    #param = sys.argv
-    downloader = CardImageDownloader()
-    #name, image_data = downloader.get_card_name_and_image_data('NEO', 226) # 漆月魁渡
-    #name, image_data = downloader.get_card_name_and_image_data('ELD', 329)  # フェイに呪われた王、コルヴォルド
-    #name, image_data = downloader.get_card_name_and_image_data('NEO', 4)    # 蛾との親睦
-    #name, image_data = downloader.get_card_name_and_image_data('MID', 268)    # MID平地
-    #name, image_data = downloader.get_card_name_and_image_data('AFR', 1)    # メイス＋２
-    #name, image_data = downloader.get_card_name_and_image_data('STX', 'A-41')    # A-ゼロ除算
-    #name, image_data = downloader.get_card_name_and_image_data('NEO', '219')    # 闇叫び
-#    if name and image_data:
-#        with open(sub(r'["*/:<>?\\\|]', '-', name)+'.png', 'wb') as f:
-#            f.write(image_data)
+    from scrython_wrapper import ScrythonWrapper
+    from mtgsdk_wrapper import MtgSdkWrapper
+    from mtgjson_wrapper import MtgJsonWrapper
 
-    downloader.save_set_all_image('VOW', 'card_image')
+    #param = sys.argv
+    downloader_scrython = CardImageDownloader(wrapper=ScrythonWrapper())
+    downloader_mtgsdk = CardImageDownloader(wrapper=MtgSdkWrapper())
+    downloader_mtgjson = CardImageDownloader(wrapper=MtgJsonWrapper())
+
+    set_number_backs = [
+        ['NEO', 1, False],
+        ['NEO', 2, False],
+        ['NEO', 3, False],
+        ['NEO', 4, False],
+        ['NEO', 5, False],
+        ['NEO', 6, False],
+        ['NEO', 7, False],
+        ['NEO', 8, False],
+        ['NEO', 9, False],
+        ['NEO', 10, False]
+    ]
+    downloader_scrython.get_card_images(set_number_backs)
+
+    set_number_backs = [
+        ['SNC', 1, False],
+        ['SNC', 2, False],
+        ['SNC', 3, False],
+        ['SNC', 4, False],
+        ['SNC', 5, False],
+        ['SNC', 6, False],
+        ['SNC', 7, False],
+        ['SNC', 8, False],
+        ['SNC', 9, False],
+        ['SNC', 10, False]
+    ]
+    downloader_mtgsdk.get_card_images(set_number_backs)
+
+    set_number_backs = [
+        ['KHM', 1, False],
+        ['KHM', 2, False],
+        ['KHM', 3, False],
+        ['KHM', 4, False],
+        ['KHM', 5, False],
+        ['KHM', 6, False],
+        ['KHM', 7, False],
+        ['KHM', 8, False],
+        ['KHM', 9, False],
+        ['KHM', 10, False]
+    ]
+    downloader_mtgjson.get_card_images(set_number_backs)

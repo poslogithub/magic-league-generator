@@ -541,11 +541,11 @@ class GathererSDK():
 
         # フォルダが存在しなければ作成する
         if not exists(self.json_dir):
-            makedirs(self.json_dir)
+            makedirs(self.json_dir, exist_ok=True)
         if not exists(self.image_dir):
-            makedirs(self.image_dir)
+            makedirs(self.image_dir, exist_ok=True)
         if not exists(self.html_dir):
-            makedirs(self.html_dir)
+            makedirs(self.html_dir, exist_ok=True)
     
     def __get_html(self, path, url):
         html = None
@@ -677,7 +677,7 @@ class GathererSDK():
 
         self.cards.sort(key=itemgetter(Key.MULTIVERSE_ID, Key.CARD_NUMBER))
         with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(self.cards, f, indent=4, ensure_ascii=False)
+            json.dump(self.cards, f, ensure_ascii=False, indent=4)
         return self.cards
 
     

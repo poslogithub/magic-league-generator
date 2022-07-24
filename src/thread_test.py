@@ -13,7 +13,7 @@ for set in sets:
     get_set_cards(set, sdk)
 """
 
-sdk = scrython_wrapper.Scrython()
+sdk = scrython_wrapper.ScrythonWrapper()
 for set in sets:
     get_set_cards(set, sdk)
 

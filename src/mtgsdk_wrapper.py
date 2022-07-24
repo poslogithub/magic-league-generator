@@ -16,7 +16,7 @@ class Key():
     FOREIGN_NAMES = 'foreignNames'
     LANGUAGE = 'language'
 
-class MtgSdk():
+class MtgSdkWrapper():
     JSON_DIR = 'mtgsdk_json'
 
     lang = getlocale()[0].split('_')[0]
@@ -116,7 +116,7 @@ class MtgSdk():
 if __name__ == "__main__":
     set = 'NEO'
 
-    sdk = MtgSdk()
+    sdk = MtgSdkWrapper()
     print(sdk.get_card_image_url(set, 3))
     print(sdk.get_card_image_url(set, 4))
     print(sdk.get_card_image_url(set, 4, back=True))
