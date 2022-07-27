@@ -646,7 +646,7 @@ class Generator():
     def get_card_image_path(self, name, set, number):
         # カード名.拡張子ファイルが存在する場合、そのパスを返す
         for ext in self.downloader.FORMATS.values():
-            card_image_path = join(self.downloader.image_dir, str(number) + ext)
+            card_image_path = join(self.downloader.image_dir, set, str(number) + ext)
             if exists(card_image_path):
                 return card_image_path
 

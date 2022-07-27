@@ -43,6 +43,9 @@ class ScrythonWrapper():
         
         return data
 
+    @classmethod
+    def query(cls, set, lang):
+        return 'set:{} order:set lang:{} unique:prints'.format(set, lang)
 
     def get_set_cards(self, set):
         if set in SET_TABLE:
@@ -63,7 +66,7 @@ class ScrythonWrapper():
                 return None
 
         print('Downloading {} {} set data...'.format(self.lang, set), end='', flush=True)
-        q = 'set:{} order:set lang:{}'.format(set, self.lang)
+        q = self.query(set, self.lang)
         data = self.search(q)
         if not data:
             return None
@@ -72,7 +75,7 @@ class ScrythonWrapper():
 
         if self.lang != ENGLISH:
             print('Downloading {} {} set data...'.format(ENGLISH, set), end='', flush=True)
-            q = 'set:{} order:set lang:{}'.format(set, ENGLISH)
+            q = self.query(set, ENGLISH)
             data = self.search(q)
             if not data:
                 return None
@@ -126,7 +129,7 @@ class ScrythonWrapper():
 
 
 if __name__ == '__main__':
-    set = 'NEO'
+    set = 'VOW'
 
     sdk = ScrythonWrapper()
     print(sdk.get_card_image_url(set, 3))

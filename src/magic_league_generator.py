@@ -31,7 +31,7 @@ class GeneratorApp(Frame):
         self.config_file = GeneratorConfigFile(self.CONFIG_PATH)
         self.config = self.config_file.load()
         #self.generator = Generator(json_dir=self.config.get(ConfigKey.JSON_DIR), image_dir=self.config.get(ConfigKey.IMAGE_DIR))
-        self.generator = Generator(card_image_cache_dir=self.config.get(ConfigKey.IMAGE_DIR))
+        self.generator = Generator()
         self.sets = [""]
         for set in self.generator.get_sets():
             if self.generator.sealedable(set):
