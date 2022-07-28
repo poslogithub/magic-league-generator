@@ -1,20 +1,18 @@
-import calendar
+from calendar import monthrange
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from dateutil.tz import gettz
 from hashlib import sha512
 from operator import attrgetter
 from os.path import exists, join
-from re import sub
+from re import match, sub
 from threading import Thread
-from PIL import Image, ImageDraw, ImageFont
 import random
-import re
-from mtga.set_data import all_mtga_cards
+
 from card_image_downloader import CardImageDownloader
-from io import BytesIO
-from mtgsdk_wrapper import MtgSdkWrapper
-from scrython_wrapper import ScrythonWrapper
+
+from mtga.set_data import all_mtga_cards
+from PIL import Image, ImageDraw, ImageFont
 
 class Rarity():
     TOKEN = "Token"
@@ -298,7 +296,7 @@ class Generator():
         decklist_cards = {}
         decklist_lines = decklist.splitlines()
         for line in decklist_lines:
-            if re.match(r'^[1-9]', line):
+            if match(r'^[1-9]', line):
                 num = int(line.split()[0])
                 if name_only:
                     decklist_card_str = " ".join(line.split()[1:-2])
@@ -315,7 +313,7 @@ class Generator():
         rst = {}
         decklist_lines = decklist.splitlines()
         for line in decklist_lines:
-            if re.match(r'^[1-9]', line):
+            if match(r'^[1-9]', line):
                 splited_line = line.split()
                 name = " ".join(splited_line[1:-2])
                 if name not in rst.keys():
@@ -377,7 +375,7 @@ class Generator():
             if (now+timedelta(days=1)).day == 1 and now.hour >= cls.MONTHLY_RESET_HOUR:    # 翌日が1日＝今日が月末日
                 dt = datetime(now.year, now.month, now.day, cls.MONTHLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
             else:
-                dt = datetime(now.year, now.month - 1, calendar.monthrange(now.year, now.month - 1)[1], cls.MONTHLY_RESET_HOUR, tzinfo=cls.TZ_UTC) # 前月の月末日
+                dt = datetime(now.year, now.month - 1, monthrange(now.year, now.month - 1)[1], cls.MONTHLY_RESET_HOUR, tzinfo=cls.TZ_UTC) # 前月の月末日
         elif mode == Mode.WEEKLY:
             if now.weekday == 6 and now.hour > cls.WEEKLY_RESET_HOUR:    # 当日が日曜の場合
                 dt = datetime(now.year, now.month, now.day, cls.WEEKLY_RESET_HOUR, tzinfo=cls.TZ_UTC)
@@ -486,7 +484,7 @@ class Generator():
         for line in decklist_lines:
             if line in ["サイドボード", "Sideboard"]:
                 is_deck = False
-            elif re.match(r'^[0-9]', line):
+            elif match(r'^[0-9]', line):
                 if is_deck:
                     deck += line + "\n"
                 else:
