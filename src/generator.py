@@ -537,7 +537,7 @@ class Generator():
                 elif card.cmc >= 6:
                     key2 = Key.MV_6
             else:
-                if card.pretty_name in cls.BASIC_LANDS:
+                if card.is_basic:
                     key2 = Key.BASIC
                 else:
                     key2 = Key.NONBASIC
@@ -560,7 +560,7 @@ class Generator():
         for key0 in rst.keys(): # DECK, SIDEBOARD
             for key1 in rst[key0].keys():   # CREATURE, NONCREATURE, LAND
                 for key2 in rst[key0][key1].keys(): # MV_n, BASIC, NONBASIC
-                    rst[key0][key1][key2].sort(key=attrgetter('cmc', 'set_number', 'set'))
+                    rst[key0][key1][key2].sort(key=attrgetter('cmc', 'set', 'set_number'))
 
         return rst
 
@@ -609,10 +609,11 @@ class Generator():
         else:
             basic_land_nums = {}
             for basic_land_card in image_array[Key.BASIC]:
-                if basic_land_card.pretty_name in basic_land_nums.keys():
-                    basic_land_nums[basic_land_card.pretty_name] += 1
+                set_n_number = "{} {}".format(basic_land_card.set, basic_land_card.set_number)
+                if set_n_number in basic_land_nums.keys():
+                    basic_land_nums[set_n_number] += 1
                 else:
-                    basic_land_nums[basic_land_card.pretty_name] = 1
+                    basic_land_nums[set_n_number] = 1
             
             n = len(basic_land_nums) + len(image_array[Key.NONBASIC])
 
@@ -623,17 +624,18 @@ class Generator():
 
             x = 0
             y = 0
-            processed_basic_land_names = []
+            processed_basic_lands = []
             for key in image_array.keys():  # BASIC, NONBASIC
                 for card in image_array[key]:
                     if key == Key.BASIC:
-                        if card.pretty_name in processed_basic_land_names:
+                        set_n_number = "{} {}".format(card.set, card.set_number)
+                        if set_n_number in processed_basic_lands:
                             continue
-                        processed_basic_land_names.append(card.pretty_name)
+                        processed_basic_lands.append(set_n_number)
                     self.composite_card_image(decklist_image, card, (x, y))
                     if key == Key.BASIC:
                         self.draw_translucence_rectangle(decklist_image, (round(x+CardImage.WIDTH*3/5), round(y+CardImage.HEIGHT_MARGIN*2/5)), (round(CardImage.WIDTH/3), round(CardImage.HEIGHT_MARGIN/2)), (0, 0, 0, 192))
-                        self.draw_text(decklist_image, 'x '+str(basic_land_nums.get(card.pretty_name)), (x + CardImage.WIDTH*9/10, y + round(CardImage.HEIGHT_MARGIN*6.5/10)))
+                        self.draw_text(decklist_image, 'x '+str(basic_land_nums.get(set_n_number)), (x + CardImage.WIDTH*9/10, y + round(CardImage.HEIGHT_MARGIN*6.5/10)))
                     y += CardImage.HEIGHT_MARGIN
         return decklist_image
 

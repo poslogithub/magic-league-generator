@@ -33,18 +33,23 @@ class CardImageDownloader():
     
 
     def get_card_images(self, set_number_backs):    # set_number_backs: [(set, number, back), ...]
-        urls = []
-        for set_number_back in set_number_backs:
-            url = self.wrapper.get_card_image_url(set_number_back[0], set_number_back[1], set_number_back[2])
-            urls.append(url)
-        
         self.images = list(range(len(set_number_backs)))
         threads = []
-        for i in range(len(set_number_backs)):
-            thread = Thread(target=self.get_card_image, args=(set_number_backs[i][0], set_number_backs[i][1], set_number_backs[i][2], urls[i], i), daemon=True)
-            thread.start()
-            threads.append(thread)
-            sleep(0.1)
+        i = 0
+        for set_number_back in set_number_backs:
+            set_dir = join(self.image_dir, set_number_back[0])
+            is_exist = False
+            for format in self.FORMATS.values():
+                image_path = join(set_dir, str(set_number_back[1])+('b' if set_number_back[2] else '')+format)
+                if exists(image_path):
+                    is_exist = True
+            if not is_exist:
+                url = self.wrapper.get_card_image_url(set_number_back[0], set_number_back[1], set_number_back[2])
+                thread = Thread(target=self.get_card_image, args=(set_number_back[0], set_number_back[1], set_number_back[2], url, i), daemon=True)
+                thread.start()
+                threads.append(thread)
+                sleep(0.1)
+            i += 1
         
         for i in range(len(threads)):
             threads[i].join(60)
