@@ -9,6 +9,7 @@ from traceback import print_exc
 import scrython
 from util import ENGLISH, EXT_JSON, GATHERER_CARD_IMAGE_URL, SET_TABLE, UTF_8
 
+
 class Key():
     HAS_MORE = 'has_more'
     DATA = 'data'
@@ -46,6 +47,7 @@ class ScrythonWrapper():
     @classmethod
     def query(cls, set, lang):
         return 'set:{} order:set lang:{} unique:prints'.format(set, lang)
+
 
     def get_set_cards(self, set):
         if set in SET_TABLE:
@@ -110,6 +112,15 @@ class ScrythonWrapper():
 
         return None
     
+
+    def get_card_by_arena_id(self, arena_id):
+        print('Downloading card arena id {} ...'.format(arena_id), end='', flush=True)
+        try:
+            card = scrython.cards.ArenaId(id=str(arena_id))
+            return card
+        except scrython.ScryfallError:
+            return None
+
     
     def get_card_image_url(self, set, collector_number, back=False):
         card = self.get_card(set, collector_number)
@@ -129,9 +140,15 @@ class ScrythonWrapper():
 
 
 if __name__ == '__main__':
-    set = 'VOW'
+    from mtga.set_data import all_mtga_cards
 
     sdk = ScrythonWrapper()
-    print(sdk.get_card_image_url(set, 3))
-    print(sdk.get_card_image_url(set, 4))
-    print(sdk.get_card_image_url(set, 4, back=True))
+    for mtga_card in [card for card in all_mtga_cards.cards if card.is_digital_only and not card.is_rebalanced]:
+        card = sdk.get_card_by_arena_id(mtga_card.mtga_id)
+        if card:
+            print(card.name())
+        sleep(0.1)
+    #set = 'VOW'
+    #print(sdk.get_card_image_url(set, 3))
+    #print(sdk.get_card_image_url(set, 4))
+    #print(sdk.get_card_image_url(set, 4, back=True))

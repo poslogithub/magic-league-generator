@@ -51,10 +51,10 @@ class CardImageDownloader():
                 sleep(0.1)
             i += 1
         
-        for i in range(len(threads)):
-            threads[i].join(60)
-            if threads[i].is_alive():
-                print('Timeout occured @ {}.{} {}({}, {}, {}, {}, {})'.format(self.__class__, _getframe().f_code.co_name, 'get_card_image', set_number_backs[i][0], set_number_backs[i][1], set_number_backs[i][2], urls[i], i))
+        for thread in threads:
+            thread.join(60)
+            if thread.is_alive():
+                print('Timeout occured @ {}.{} {}'.format(self.__class__, _getframe().f_code.co_name, 'get_card_images'))
                 return None
         
         return self.images
