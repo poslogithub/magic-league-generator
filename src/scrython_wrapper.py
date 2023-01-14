@@ -117,8 +117,10 @@ class ScrythonWrapper():
         print('Downloading card arena id {} ...'.format(arena_id), end='', flush=True)
         try:
             card = scrython.cards.ArenaId(id=str(arena_id))
+            print('complete.', flush=True)
             return card
         except scrython.ScryfallError:
+            print('failed.', flush=True)
             return None
 
     
@@ -141,13 +143,24 @@ class ScrythonWrapper():
 
 if __name__ == '__main__':
     from mtga.set_data import all_mtga_cards
+    import requests
 
     sdk = ScrythonWrapper()
     for mtga_card in [card for card in all_mtga_cards.cards if card.is_digital_only and not card.is_rebalanced]:
+        if exists(mtga_card.pretty_name+'.jpg'):
+            continue
         card = sdk.get_card_by_arena_id(mtga_card.mtga_id)
-        if card:
-            print(card.name())
         sleep(0.1)
+        if card:
+            image_uris = card.image_uris()
+            if image_uris['normal']:
+                print('Downloading card image {} ...'.format(mtga_card.pretty_name), end='', flush=True)
+                image = requests.get(image_uris['normal']).content
+                sleep(0.1)
+                with open(mtga_card.pretty_name+'.jpg', mode='wb') as f:
+                    f.write(image)
+                print('complete.', flush=True)
+                
     #set = 'VOW'
     #print(sdk.get_card_image_url(set, 3))
     #print(sdk.get_card_image_url(set, 4))
